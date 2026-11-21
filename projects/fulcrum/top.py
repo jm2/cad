@@ -1,0 +1,273 @@
+"""Top shell and the buttons cut from it.
+
+Main buttons (L/R)
+  molded  slots along the inner and outer edges; the rear edge stays joined to
+          the shell and is thinned underneath to FLEX_T over FLEX_BAND, so each
+          button is a flexure moulded in one piece with the shell.
+  fdm     slotted all round into separate parts; two L-shaped knuckles per
+          button turn on a steel dowel held by lugs under the fixed shell.
+  Each button carries a post that stops SW_PRETRAVEL above its switch plunger.
+
+Small buttons (wheel mode, DPI up/down, 2 side buttons per flank)
+  The pad is cut from the shell itself (flush with the surface, GAP all
+  round), with a retaining flange behind the wall and a post to its switch.
+"""
+
+from __future__ import annotations
+
+import math
+from functools import lru_cache
+
+import build123d as bd
+
+import form
+import layout as L
+import params as P
+
+MIN = (bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN)
+BIG = 200.0
+
+
+# ------------------------------------------------------------- helpers
+def zbox(x0, x1, y0, y1, z0, z1) -> bd.Solid:
+    return bd.Pos((x0 + x1) / 2, (y0 + y1) / 2, z0) * bd.Box(x1 - x0, y1 - y0, z1 - z0, align=MIN)
+
+
+def strip(points, width, z0=None, z1=45.0) -> bd.Part:
+    """Vertical slot cutter along a plan polyline (x, y), `width` wide."""
+    z0 = P.Z_SPLIT - 1.0 if z0 is None else z0
+    out = None
+    for (xa, ya), (xb, yb) in zip(points[:-1], points[1:]):
+        L_ = math.hypot(xb - xa, yb - ya)
+        ang = math.degrees(math.atan2(yb - ya, xb - xa))
+        seg = bd.Pos((xa + xb) / 2, (ya + yb) / 2, z0) * bd.Rot(0, 0, ang) * bd.Box(
+            L_ + width, width, z1 - z0, align=MIN)
+        out = seg if out is None else out + seg
+    return out
+
+
+def rrect_face(lx, ly, r, plane: bd.Plane) -> bd.Face:
+    with bd.BuildSketch(plane) as sk:
+        bd.RectangleRounded(lx, ly, min(r, 0.49 * min(lx, ly)))
+    return sk.sketch.faces()[0]
+
+
+def prism_z(cx, cy, lx, ly, r, z0, z1) -> bd.Part:
+    f = rrect_face(lx, ly, r, bd.Plane.XY.offset(z0).shift_origin((cx, cy, z0)))
+    return bd.extrude(f, amount=z1 - z0)
+
+
+def prism_x(cy, cz, ly, lz, r, x0, x1) -> bd.Part:
+    """Rounded-rect prism along +X from x0 to x1 (profile in YZ)."""
+    pl = bd.Plane(origin=(x0, cy, cz), x_dir=(0, 1, 0), z_dir=(1, 0, 0))
+    f = rrect_face(ly, lz, min(ly, lz) / 2, pl)
+    return bd.extrude(f, amount=x1 - x0)
+
+
+def ceiling(x, y) -> float:
+    """Underside of the top shell (cavity roof) at (x, y)."""
+    return form.surface_z(form.top_cavity(), x, y)
+
+
+# ------------------------------------------------------ main button plan
+def wheel_slot_half():
+    return P.WHEEL_W / 2 + P.WHEEL_CLEAR
+
+
+def wheel_slot_y():
+    """(rear, front) y of the wheel opening: the wheel chord at the inner
+    surface plus clearance."""
+    zc = L.wheel_axis_z()
+    r = P.WHEEL_D / 2
+    dz = form.surface_z(form.top_cavity(), 0, P.WHEEL_Y) - zc
+    half = math.sqrt(max(r * r - dz * dz, 0)) + P.WHEEL_CLEAR + 0.5
+    return P.WHEEL_Y - half, P.WHEEL_Y + half
+
+
+def outer_x(y):
+    xn, xr = P.BTN_OUTER_X
+    t = (P.Y_NOSE + 6 - y) / (P.Y_NOSE + 6 - P.BTN_REAR_Y)
+    return xn + (xr - xn) * t
+
+
+def button_region(sign) -> bd.Solid:
+    """Plan region of one main button (prism), between its slot centre lines."""
+    ws0, ws1 = wheel_slot_y()
+    xs = wheel_slot_half()
+    yN = P.Y_NOSE + 6
+    pts = [(0, yN), (0, ws1), (xs, ws1), (xs, ws0), (P.SPINE_HALF, ws0),
+           (P.SPINE_HALF, P.BTN_REAR_Y), (outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y), (outer_x(yN), yN)]
+    pts = [(sign * x, y) for x, y in pts]
+    w = bd.Wire.make_polygon([bd.Vector(x, y, 0) for x, y in pts], close=True)
+    f = bd.Face(w)
+    return bd.extrude(f.moved(bd.Location((0, 0, P.Z_SPLIT - 1))), amount=40)
+
+
+def slot_lines(sign, rear=True):
+    ws0, ws1 = wheel_slot_y()
+    xs = wheel_slot_half()
+    yN = P.Y_NOSE + 6
+    lines = [
+        [(0, ws1), (0, yN)],                                          # centre
+        [(xs, ws0), (P.SPINE_HALF, ws0), (P.SPINE_HALF, P.BTN_REAR_Y)],  # spine
+        [(outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y), (outer_x(yN), yN)],  # outer
+    ]
+    if rear:
+        lines.append([(P.SPINE_HALF, P.BTN_REAR_Y), (outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y)])
+    return [[(sign * x, y) for x, y in ln] for ln in lines]
+
+
+# ---------------------------------------------------------- small buttons
+SMALL_TOP = {   # name: (cx, cy, lx, ly, switch name)
+    "btn_mode": (0.0, P.MODE_BTN_Y, P.MODE_BTN[0], P.MODE_BTN[1], "sw_mode"),
+    "btn_dpi_up": (0.0, P.DPI_Y[0], P.DPI_BTN[0], P.DPI_BTN[1], "sw_dpi_up"),
+    "btn_dpi_down": (0.0, P.DPI_Y[1], P.DPI_BTN[0], P.DPI_BTN[1], "sw_dpi_down"),
+}
+
+
+def small_side():
+    out = {}
+    for side, sign in (("l", -1), ("r", 1)):
+        for i, y in enumerate(P.SIDE_BTN_Y):
+            out[f"btn_side_{side}{i + 1}"] = (sign, y, f"sw_side_{side}{i + 1}")
+    return out
+
+
+def top_stem_z():
+    return L.TOPB_Z + P.PCB_T + P.SW_TACT_PLUNGER[1]
+
+
+def side_stem_x():
+    return L.side_board_x() + P.SW_TACT_PLUNGER[1]
+
+
+def small_top_button(cx, cy, lx, ly):
+    r = min(lx, ly) / 2
+    fl = P.FLANGE
+    # flange sits below the lowest roof point over its footprint
+    xs = [cx - lx / 2 - fl, cx, cx + lx / 2 + fl]
+    ys = [cy - ly / 2 - fl, cy, cy + ly / 2 + fl]
+    roof = min(ceiling(x, y) for x in xs for y in ys)
+    f_top = roof - 0.3
+    f_bot = f_top - P.FLANGE_T
+    pad = prism_z(cx, cy, lx, ly, r, f_bot, 60) & form.top_outer()
+    flange = prism_z(cx, cy, lx + 2 * fl, ly + 2 * fl, r + fl, f_bot, f_top)
+    stem = top_stem_z() + P.SW_PRETRAVEL
+    post = L.cyl_z(cx, cy, stem, P.POST_D, f_bot - stem + 0.01)
+    return (pad + flange + post).solids()[0], prism_z(cx, cy, lx + 2 * P.GAP, ly + 2 * P.GAP, r + P.GAP, f_top - 2, 60)
+
+
+def small_side_button(sign, cy):
+    ly, lz, zc = P.SIDE_BTN_LEN, P.SIDE_BTN_H, P.SIDE_BTN_Z
+    fl = P.FLANGE
+    f_out = L.side_inner_x() - 0.3
+    f_in = f_out - P.FLANGE_T
+    pad = prism_x(cy, zc, ly, lz, 0, f_in, 60) & form.top_outer()
+    flange = prism_x(cy, zc, ly + 2 * fl, lz + 2 * fl, 0, f_in, f_out)
+    stem = side_stem_x() + P.SW_PRETRAVEL
+    post = L.cyl_x(stem, cy, zc, P.POST_D, f_in - stem + 0.01)
+    btn = (pad + flange + post).solids()[0]
+    cut = prism_x(cy, zc, ly + 2 * P.GAP, lz + 2 * P.GAP, 0, f_out - 2, 60)
+    if sign < 0:
+        btn = btn.mirror(bd.Plane.YZ)
+        cut = cut.mirror(bd.Plane.YZ)
+    return btn, cut
+
+
+# ----------------------------------------------------------------- FDM hinge
+def hinge_geom(sign):
+    """(axis y, axis z, knuckle x-centres, lug x-centres) for one button."""
+    yr = P.BTN_REAR_Y
+    xa, xb = P.SPINE_HALF + 2.5, outer_x(yr) - 3.0
+    ya = yr - 1.5
+    za = min(ceiling(sign * x, yr) for x in (xa, xb)) - 4.5
+    kx, _ = P.HINGE_KNUCKLE
+    knuckles = [xa, xb]
+    lugs = [xa - kx - P.FIT, xb + kx + P.FIT]
+    return ya, za, [sign * x for x in knuckles], [sign * x for x in lugs]
+
+
+def knuckle(x, ya, za, button_roof):
+    kx, kl = P.HINGE_KNUCKLE
+    yr = P.BTN_REAR_Y
+    drop = zbox(x - kx / 2, x + kx / 2, yr + P.GAP / 2 + 0.3, yr + P.GAP / 2 + 3.3, za - 2.5, button_roof + 1)
+    arm = zbox(x - kx / 2, x + kx / 2, ya - 2.5, yr + P.GAP / 2 + 3.3, za - 2.5, za + 2.5)
+    k = drop + arm - L.cyl_x(x - kx, ya, za, P.HINGE_PIN_D + 2 * P.FIT, 2 * kx)
+    return k
+
+
+def lug(x, ya, za, roof):
+    kx, _ = P.HINGE_KNUCKLE
+    yr = P.BTN_REAR_Y
+    b = zbox(x - kx / 2, x + kx / 2, ya - 2.5, yr - P.GAP / 2 - 0.3, za - 2.5, roof + 1)
+    return b - L.cyl_x(x - kx, ya, za, P.HINGE_PIN_D + 0.05, 2 * kx)   # press fit pin
+
+
+def hinge_pin(sign):
+    ya, za, ks, ls = hinge_geom(sign)
+    xs = sorted(ks + ls)
+    kx, _ = P.HINGE_KNUCKLE
+    x0, x1 = xs[0] - kx / 2 + 0.3, xs[-1] + kx / 2 - 0.3
+    return L.cyl_x(x0, ya, za, P.HINGE_PIN_D, x1 - x0)
+
+
+# ------------------------------------------------------------------ build
+def post(x, y):
+    z0 = L.plunger_top_main() + P.SW_PRETRAVEL
+    return L.cyl_z(x, y, z0, P.POST_D, ceiling(x, y) + 1.0 - z0)
+
+
+@lru_cache(maxsize=1)
+def build_top() -> dict[str, bd.Solid]:
+    shell = form.top_shell_raw()
+    parts = {}
+    # wheel opening
+    ws0, ws1 = wheel_slot_y()
+    xs = wheel_slot_half()
+    shell = shell - zbox(-xs, xs, ws0, ws1, P.Z_SPLIT - 1, 50)
+    # small buttons
+    for name, (cx, cy, lx, ly, _) in SMALL_TOP.items():
+        btn, cut = small_top_button(cx, cy, lx, ly)
+        shell = shell - cut
+        parts[name] = btn
+    for name, (sign, cy, _) in small_side().items():
+        btn, cut = small_side_button(sign, cy)
+        shell = shell - cut
+        parts[name] = btn
+    # main buttons
+    for sign, name in ((-1, "btn_left"), (1, "btn_right")):
+        for ln in slot_lines(sign, rear=P.FDM):
+            shell = shell - strip(ln, P.GAP)
+        sw = P.SW_L_XY if sign < 0 else P.SW_R_XY
+        if P.MOLDED:
+            band = zbox(min(sign * P.SPINE_HALF, sign * outer_x(P.BTN_REAR_Y)),
+                        max(sign * P.SPINE_HALF, sign * outer_x(P.BTN_REAR_Y)),
+                        P.BTN_REAR_Y - P.FLEX_BAND / 2, P.BTN_REAR_Y + P.FLEX_BAND / 2,
+                        P.Z_SPLIT, 50)
+            thin = bd.Pos(0, 0, P.WALL - P.FLEX_T) * form.top_cavity()
+            shell = shell - (thin & band)
+            shell = shell + post(*sw)
+    if P.FDM:
+        pieces = shell.solids()
+        region = {s: button_region(s) for s in (-1, 1)}
+        keep = []
+        for pc in pieces:
+            c = pc.center()
+            if c.Y > P.BTN_REAR_Y and abs(c.X) > 1 and pc.volume > 100:
+                sign = 1 if c.X > 0 else -1
+                ya, za, ks, ls = hinge_geom(sign)
+                sw = P.SW_L_XY if sign < 0 else P.SW_R_XY
+                b = pc + post(*sw)
+                for kxc in ks:
+                    b = b + knuckle(kxc, ya, za, ceiling(kxc, P.BTN_REAR_Y + 2))
+                parts["btn_left" if sign < 0 else "btn_right"] = b.solids()[0]
+            else:
+                keep.append(pc)
+        shell = max(keep, key=lambda s: s.volume)
+        for sign in (-1, 1):
+            ya, za, ks, ls = hinge_geom(sign)
+            for lxc in ls:
+                shell = shell + lug(lxc, ya, za, ceiling(lxc, P.BTN_REAR_Y - 3))
+            parts[f"pin_{'left' if sign < 0 else 'right'}"] = hinge_pin(sign)
+    parts["top_shell"] = shell.solids()[0] if len(shell.solids()) == 1 else shell
+    return parts

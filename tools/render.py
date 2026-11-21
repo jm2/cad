@@ -176,23 +176,22 @@ def render_items(items: list[Item], out_png: Path, view: str = "iso", title="",
         mesh = to_pyvista(it.shape).compute_normals(
             cell_normals=False, split_vertices=False, consistent_normals=False,
             auto_orient_normals=False)
+        # Every mesh goes through the same per-cell RGB path: mixing plain
+        # colour actors with RGB-scalar actors made VTK render the later ones
+        # speckled (order-dependent).
         base = _rgb(it.color)
-        if it.cut_faces:
-            cut = np.isin(mesh.cell_data["face_id"], it.cut_faces)
-            cols = np.where(cut[:, None], _cut_color(it.color), base)
-            mesh.cell_data["rgb"] = (cols * 255).astype(np.uint8)
-            pl.add_mesh(mesh, scalars="rgb", rgb=True, opacity=it.opacity,
-                        smooth_shading=True, specular=0.2)
-        else:
-            pl.add_mesh(mesh, color=base, opacity=it.opacity,
-                        smooth_shading=True, specular=0.2,
-                        label=it.name or None)
+        cut = np.isin(mesh.cell_data["face_id"], it.cut_faces) if it.cut_faces else \
+            np.zeros(mesh.n_cells, bool)
+        cols = np.where(cut[:, None], _cut_color(it.color), base)
+        mesh.cell_data["rgb"] = (cols * 255).astype(np.uint8)
+        pl.add_mesh(mesh, scalars="rgb", rgb=True, opacity=it.opacity,
+                    smooth_shading=True, specular=0.2)
         if it.edges:
             e = edge_lines(it.shape)
             if e is not None:
                 pl.add_mesh(e, color=EDGE, line_width=2 if it.opacity > 0.6 else 1,
                             opacity=1.0 if it.opacity > 0.6 else 0.35)
-    if legend and len(items) > 1:
+    if legend and 1 < len({it.name for it in items}) <= 12:
         seen = {}
         for it in items:
             seen.setdefault(it.name, it.color)

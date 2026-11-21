@@ -85,6 +85,18 @@ SW_PRETRAVEL = 0.3 if MOLDED else 0.4  # gap button post -> plunger at rest
 SW_L_XY = (-13.0, 44.0)
 SW_R_XY = (13.0, 44.0)
 
+# Main buttons: plan outline on the top surface (right button; left mirrors)
+BTN_REAR_Y = 10.0          # rear edge (flexure line / pivot) of L/R buttons
+BTN_OUTER_X = (19.5, 21.0)  # outer edge x at the nose / at the rear edge
+SPINE_HALF = 5.6           # half-width of the centre spine (wheel, mode btn)
+FLEX_T = 1.0               # moulded flexure: wall thinned to this...
+FLEX_BAND = 4.0            # ...over this band along the rear edge
+POST_D = 3.6               # button plunger posts
+HINGE_PIN_D = 2.0          # FDM: steel dowel pin through the knuckles
+HINGE_KNUCKLE = (3.0, 4.0)  # FDM: knuckle thickness (x), length (y)
+FLANGE = 1.2               # small buttons: retaining flange overhang
+FLANGE_T = 1.0
+
 # Small tact switches (DPI, mode, thumb, wheel click/tilt)
 SW_TACT = (6.0, 6.0, 3.5)     # body x, y, height
 SW_TACT_PLUNGER = (3.5, 5.0)  # stem diameter, free height of stem top
@@ -99,7 +111,13 @@ WHEEL_TREAD_N = 30         # rubber tread ribs
 WHEEL_DETENTS = 24
 AXLE_D = 2.0
 WHEEL_CLEAR = 0.8          # wheel to shell slot, each side / ends
-ENCODER = (6.0, 12.0, 13.0)   # x thickness, y, z (dummy, axle through)
+# Optical wheel encoder: slotted disc on the wheel's right flank read by a
+# U-shaped photo-interrupter (low, frictionless; suits free-spin)
+ENC_DISC_D = 17.0          # slotted disc diameter
+ENC_DISC_T = 0.8
+ENC_SLOTS = 24
+ENCODER = (6.0, 5.0, 8.0)  # interrupter body x, y, z (dummy)
+ENC_GAP = 2.0              # slot in the interrupter the disc runs through
 
 # Wheel-mode toggle behind the wheel
 MODE_BTN_Y = 17.0

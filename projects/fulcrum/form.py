@@ -156,14 +156,19 @@ def _roll_a():
 
 def roll(u: float) -> float:
     """Base flank inset profile, 0 at the parting line (u=0) to 1 at the
-    underside (u=1): DRAFT degrees at the top, rolling inward below."""
+    underside (u=1): DRAFT degrees at the top, rolling inward below. u < 0
+    (above the parting line) continues the draft line, so lofts through a
+    level above the parting plane stay smooth."""
     a = _roll_a()
+    if u < 0:
+        return a * u
     return a * u + (1 - a) * u ** 2.4
 
 
 def roll_slope(u: float) -> float:
     """d(inset)/dz of the roll at the mean tumble (wall compensation)."""
     a = _roll_a()
+    u = max(u, 0.0)
     return TUMBLE_MEAN * (a + (1 - a) * 2.4 * u ** 1.4) / (P.Z_SPLIT - P.Z_BASE)
 
 
@@ -190,7 +195,7 @@ def base_body(cavity: bool = False) -> bd.Solid:
     tb_end = form_at(P.Y_TAIL)["tumble"]
     wires = []
     for z in levels:
-        u = min(1.0, max(0.0, (zs - z) / H))
+        u = min(1.0, (zs - z) / H)
         r = roll(u)
         wall = P.WALL * math.sqrt(1 + roll_slope(u) ** 2) if cavity else 0.0
         if not cavity and abs(z - zs) < 1e-9:

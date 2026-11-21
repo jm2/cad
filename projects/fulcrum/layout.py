@@ -63,11 +63,23 @@ def wheel_axis_z() -> float:
 
 
 @lru_cache(maxsize=1)
+def side_inner_x() -> float:
+    """Smallest |x| of the top shell's inner flank over the side buttons'
+    flange footprints (the flange must clear it)."""
+    fl = 1.2  # = P.FLANGE (kept literal to avoid an import cycle in docs)
+    ly, lz, zc = P.SIDE_BTN_LEN, P.SIDE_BTN_H, P.SIDE_BTN_Z
+    return min(form.half_width(form.top_cavity(), y, z)
+               for cy in P.SIDE_BTN_Y
+               for y in (cy - ly / 2 - fl, cy, cy + ly / 2 + fl)
+               for z in (zc - lz / 2 - fl, zc, zc + lz / 2 + fl))
+
+
+@lru_cache(maxsize=1)
 def side_board_x() -> float:
-    """Outer face (+x side) of the right side board: leaves room for switch
-    body + stem + pre-travel + button post inside the flank."""
-    inner = min(form.half_width(form.cavity(), y, P.SIDE_BTN_Z) for y in P.SIDE_BTN_Y)
-    return inner - 2.5 - (P.SW_TACT[2] + 1.5)
+    """Outer face (+x side) of the right side board: flange clearance 0.3 +
+    flange + 1.0 mm post + pre-travel + switch stem height."""
+    return (side_inner_x() - 0.3 - P.FLANGE_T - 1.0 - P.SW_PRETRAVEL
+            - P.SW_TACT_PLUNGER[1])
 
 
 # ------------------------------------------------------------------- parts
@@ -97,6 +109,9 @@ def pcb_main() -> bd.Solid:
     for x, y in P.SCREW_XY:
         if P.PCB_Y[0] < y < P.PCB_Y[1]:
             board -= cyl_z(x, y, P.PCB_Z - 1, P.BOSS_OD + 1.0, P.PCB_T + 2)
+    # slot for the mid-mount USB-C receptacle (straddles the board)
+    w, l, h = P.USBC
+    board -= box(0, USBC_FRONT - l / 2 - 1.0, P.PCB_Z - 1, w + 0.4, l + 2.0, P.PCB_T + 2)
     return board.solids()[0]
 
 
@@ -151,10 +166,12 @@ def tact_stem_len() -> float:
     return P.SW_TACT_PLUNGER[1]
 
 
+USBC_FRONT = 60.0
+
+
 def usb_c() -> bd.Solid:
     w, l, h = P.USBC
-    y_front = 61.0
-    return box(0, y_front - l / 2, P.PCB_Z + P.PCB_T / 2 - h / 2, w, l, h)
+    return box(0, USBC_FRONT - l / 2, P.PCB_Z + P.PCB_T / 2 - h / 2, w, l, h)
 
 
 def battery() -> bd.Solid:
@@ -185,10 +202,14 @@ RECEIVER_XY = (BAT_R_OUT + 1.0 + P.RECEIVER[0] / 2, -26.0)
 
 
 def encoder() -> bd.Solid:
-    """Wheel encoder (dummy): on the right of the wheel, axle through it."""
+    """Optical interrupter (dummy) straddling the slotted encoder disc on the
+    wheel's right flank, reading below the axle."""
     ex, ey, ez = P.ENCODER
-    x0 = P.WHEEL_W / 2 + 1.6       # leaves room for the yoke arm
-    return box(x0 + ex / 2, P.WHEEL_Y, wheel_axis_z() - ez / 2, ex, ey, ez)
+    disc_x = P.WHEEL_W / 2 + 0.6 + P.ENC_DISC_T / 2       # disc mid-plane
+    zc = wheel_axis_z() - P.ENC_DISC_D / 2 + 2.0           # reads the disc rim
+    body = box(disc_x, P.WHEEL_Y, zc - ez / 2, ex, ey, ez)
+    slot = box(disc_x, P.WHEEL_Y, zc - ez / 2 + 2.0, P.ENC_GAP, ey + 1, ez)
+    return (body - slot).solids()[0]
 
 
 def power_switch() -> bd.Solid:
