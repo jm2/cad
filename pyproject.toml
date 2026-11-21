@@ -1,0 +1,23 @@
+[project]
+name = "cad"
+version = "0.1.0"
+description = "Code-first parametric CAD workspace (build123d + pyvista)"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "build123d",
+    "ocp_vscode",
+    "pyvista",
+    "vtk",
+    "trimesh",
+    "manifold3d",
+    "numpy",
+    "networkx",
+    "lxml",
+    "pytest",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::DeprecationWarning:lib3mf.*"]
