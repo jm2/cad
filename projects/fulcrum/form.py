@@ -32,6 +32,25 @@ _INTERP = {k: PchipInterpolator(P.FORM_Y, v) for k, v in P.FORM.items()}
 TUMBLE_MEAN = 3.5
 
 
+CONTOUR_N = 40     # stations per side of every closed plan contour
+
+
+def closed_spline(pts) -> bd.Wire:
+    """Periodic interpolating spline with UNIFORM parameters. Every contour
+    has the same point count and parameterisation, so their knot vectors
+    match and lofts stay compact (chord-length knots differ per contour and
+    OCCT merges them, which made a 127 MB assembly STEP)."""
+    n = len(pts)
+    return bd.Wire([bd.Edge.make_spline(pts, periodic=True,
+                                        parameters=list(np.linspace(0, 1, n + 1)))])
+
+
+def _cos_stations(a, b, n=CONTOUR_N):
+    """n stations from a to b clustered toward both ends (ends excluded)."""
+    k = np.linspace(0, math.pi, n + 2)[1:-1]
+    return list(a + (b - a) * (1 - np.cos(k)) / 2)
+
+
 def form_at(y: float) -> dict:
     return {k: float(f(y)) for k, f in _INTERP.items()}
 
@@ -120,12 +139,11 @@ def contour_wire(z, inset=0.0, dend=None, zs_shift=0.0) -> bd.Wire | None:
     rng = _contour_ys(lambda y: x_at(y) > 0.05, y0, y1)
     if rng is None:
         return None
-    a, b, ys = rng
-    ys = ys[1:-1]
-    right = [(x_at(y), y) for y in ys]
+    a, b, _ = rng
+    right = [(x_at(y), y) for y in _cos_stations(a, b)]
     pts = ([bd.Vector(0, a, z)] + [bd.Vector(x, y, z) for x, y in right] +
            [bd.Vector(0, b, z)] + [bd.Vector(-x, y, z) for x, y in reversed(right)])
-    return bd.Wire([bd.Edge.make_spline(pts, periodic=True)])
+    return closed_spline(pts)
 
 
 @lru_cache(maxsize=4)
@@ -135,9 +153,9 @@ def top_body(inset: float = 0.0, dend: float | None = None, below: float = 0.0) 
     zs = P.Z_SPLIT
     Bmax = max(top_AB(y, inset, dend)[1] for y in np.linspace(P.Y_TAIL, P.Y_NOSE, 257))
     K = 20
-    # sine spacing (dense near the crest); the last contour sits at 99.7% of
-    # the crest height so the flat cap that closes the loft is ~5 mm across
-    levels = [zs + Bmax * math.sin(0.5 * math.pi * k / K) * 0.997 for k in range(K + 1)]
+    # sine spacing (dense near the crest); the last contour sits at 99.93% of
+    # the crest height so the flat cap that closes the loft is ~4 mm across
+    levels = [zs + Bmax * math.sin(0.5 * math.pi * k / K) * 0.9993 for k in range(K + 1)]
     wires = []
     if below:
         w0 = contour_wire(zs, inset, dend)
@@ -176,11 +194,11 @@ def plan_wire(z: float, d_side, d_end) -> bd.Wire:
     """Closed periodic-spline plan outline at height z. d_side(y) is the
     inset along the flanks, d_end shortens the end zones (same inset there)."""
     yt, yn = P.Y_TAIL + d_end, P.Y_NOSE - d_end
-    ys = _end_stations(d_end, n_end=9, step=4.0)
-    right = [(max((form_at(y)["w"] - d_side(y)) * end_scale(y, d_end), 0.05), y) for y in ys]
+    right = [(max((form_at(y)["w"] - d_side(y)) * end_scale(y, d_end), 0.05), y)
+             for y in _cos_stations(yt, yn)]
     pts = ([bd.Vector(0, yt, z)] + [bd.Vector(x, y, z) for x, y in right] +
            [bd.Vector(0, yn, z)] + [bd.Vector(-x, y, z) for x, y in reversed(right)])
-    return bd.Wire([bd.Edge.make_spline(pts, periodic=True)])
+    return closed_spline(pts)
 
 
 @lru_cache(maxsize=2)
@@ -188,8 +206,10 @@ def base_body(cavity: bool = False) -> bd.Solid:
     zs, zb = P.Z_SPLIT, P.Z_BASE
     H = zs - zb
     z0 = zb + (P.FLOOR if cavity else 0.0)
-    ks = 9
-    levels = [z0 + (zs - z0) * (1 - math.cos(0.5 * math.pi * k / ks)) for k in range(ks + 1)]
+    # dense near the parting line (u^1.6 spacing): with sparse contours there
+    # the smooth loft bulged past the parting outline and lost its draft
+    ks = 14
+    levels = sorted(zs - (zs - z0) * (k / ks) ** 1.6 for k in range(ks + 1))
     if cavity:
         levels.append(zs + 1.0)        # poke through the parting plane
     tb_end = form_at(P.Y_TAIL)["tumble"]

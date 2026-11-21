@@ -34,6 +34,7 @@ Z_SPLIT = 15.0             # parting plane base | top shell (widest silhouette)
 WALL = 1.8 if MOLDED else 2.0          # shell walls
 FLOOR = 1.6 if MOLDED else 2.0         # base floor
 DRAFT = 3.0                # deg, outer walls each side of the parting line
+BOSS_DRAFT = 0.75 if MOLDED else 0.0   # deg, taper on posts / bosses / standoffs
 FIT = 0.15 if MOLDED else 0.3          # sliding / mating clearance
 GAP = 0.4 if MOLDED else 0.5           # visible split gaps around buttons
 
@@ -72,7 +73,7 @@ PCB_TOP_KEEPOUT = 4.0      # generic component height above board
 PCB_BOT_KEEPOUT = 1.2      # below board (where nothing else is placed)
 
 # Optical sensor + lens (dummy)
-SENSOR_XY = (0.0, 16.0)
+SENSOR_XY = (0.0, 17.0)
 LENS = (21.0, 19.0, 5.0)   # x, y, height below the PCB
 LENS_TO_DESK = 2.4         # lens reference plane to tracking surface
 SENSOR_IC = (9.0, 13.0, 3.2)  # above PCB
@@ -82,8 +83,8 @@ SENSOR_WINDOW = (11.0, 9.0)   # opening in the base floor
 SW_MAIN = (5.8, 12.8, 6.5)    # x, y, body height
 SW_PLUNGER = (1.6, 7.3)       # diameter, free height of plunger top above PCB
 SW_PRETRAVEL = 0.3 if MOLDED else 0.4  # gap button post -> plunger at rest
-SW_L_XY = (-13.0, 44.0)
-SW_R_XY = (13.0, 44.0)
+SW_L_XY = (-14.0, 44.0)
+SW_R_XY = (14.0, 44.0)
 
 # Main buttons: plan outline on the top surface (right button; left mirrors)
 BTN_REAR_Y = 10.0          # rear edge (flexure line / pivot) of L/R buttons
@@ -91,9 +92,10 @@ BTN_OUTER_X = (19.5, 21.0)  # outer edge x at the nose / at the rear edge
 SPINE_HALF = 5.6           # half-width of the centre spine (wheel, mode btn)
 FLEX_T = 1.0               # moulded flexure: wall thinned to this...
 FLEX_BAND = 4.0            # ...over this band along the rear edge
+NOSE_GAP = 0.8             # main buttons' nose edge stands this far above the base rim
 POST_D = 3.6               # button plunger posts
 HINGE_PIN_D = 2.0          # FDM: steel dowel pin through the knuckles
-HINGE_KNUCKLE = (3.0, 4.0)  # FDM: knuckle thickness (x), length (y)
+HINGE_KNUCKLE = (2.2, 4.0)  # FDM: knuckle thickness (x), length (y)
 FLANGE = 1.2               # small buttons: retaining flange overhang
 FLANGE_T = 1.0
 
@@ -111,13 +113,24 @@ WHEEL_TREAD_N = 30         # rubber tread ribs
 WHEEL_DETENTS = 24
 AXLE_D = 2.0
 WHEEL_CLEAR = 0.8          # wheel to shell slot, each side / ends
-# Optical wheel encoder: slotted disc on the wheel's right flank read by a
-# U-shaped photo-interrupter (low, frictionless; suits free-spin)
-ENC_DISC_D = 17.0          # slotted disc diameter
-ENC_DISC_T = 0.8
-ENC_SLOTS = 24
-ENCODER = (6.0, 5.0, 8.0)  # interrupter body x, y, z (dummy)
-ENC_GAP = 2.0              # slot in the interrupter the disc runs through
+# Magnetic wheel encoder: multipole ring magnet on the hub, read by two Hall
+# sensors (quadrature) on a small board carried by the cradle. (An optical
+# slotted disc big enough to read would stand above the low dome.)
+ENC_MAGNET = (8.0, 2.4, 2.0)   # ring OD, ID, thickness
+ENC_MAGNET_X = 4.6             # inner face (tyre side) of the ring
+ENC_GAP = 0.6                  # magnet rim to Hall sensors
+ENC_BOARD = (1.2, 8.0)         # sensor board thickness, length (y)
+
+# Wheel cradle (yoke): floats on the click switch (under its front beam) and
+# is pushed sideways onto two side-actuated tilt switches
+YOKE_T = 1.6               # arm / beam thickness
+YOKE_ARM_X = (-6.3, 9.2)   # inner faces of left / right arms
+YOKE_BEAM_Y = (21.6, 42.6) # rear / front beam inner edges
+SW_RA = (3.5, 6.0, 3.6, 1.5)  # right-angle tact: body x, y, z, stem length
+
+# Nose locating tabs (top shell -> inside the base rim)
+NOSE_TAB_XY = (21.0, 52.0)
+NOSE_TAB = (1.2, 5.0, 3.0)  # x, y, depth below the parting plane
 
 # Wheel-mode toggle behind the wheel
 MODE_BTN_Y = 17.0
@@ -128,7 +141,7 @@ DPI_Y = [5.0, -5.0]
 DPI_BTN = (7.0, 7.5)       # x, y footprint
 
 # Side buttons: two per flank (mirrored), forward + back
-SIDE_BTN_Y = [8.0, -9.0]   # centres along Y
+SIDE_BTN_Y = [8.5, -9.5]   # centres along Y (flanges need 17.4 + gap)
 SIDE_BTN_LEN = 15.0
 SIDE_BTN_H = 7.0
 SIDE_BTN_Z = 21.5          # centre height on the flank
@@ -145,7 +158,7 @@ WEIGHT_SLUG_DENSITY = 2.70  # aluminium, ~ matches a NiMH AA's mass
 
 # Receiver garage (generic 2.4 GHz nano receiver)
 RECEIVER = (15.0, 19.0, 6.0)
-RECEIVER_XY = (0.0, -30.0)   # stowed under the battery door, beside... set in layout
+RECEIVER_XY = (17.5, -37.5)  # garage pocket, opens on the underside
 
 # USB-C receptacle (mid-mount) and plug overmold clearance
 USBC = (8.94, 7.35, 3.26)
@@ -156,7 +169,7 @@ POWER_SW_XY = (11.0, 50.0)
 CONN_BTN_XY = (-11.0, 50.0)
 
 # Fasteners: base -> top shell
-SCREW_XY = [(-19.0, 47.0), (19.0, 47.0), (-18.0, -42.0), (18.0, -42.0)]
+SCREW_XY = [(-19.5, -22.0), (19.5, -22.0), (-13.5, -56.0), (13.5, -56.0)]
 SCREW_D = 2.0
 SCREW_HEAD = (3.8, 1.6)    # head diameter, height (under the skates)
 BOSS_OD = 5.0 if MOLDED else 6.2
@@ -164,7 +177,9 @@ BOSS_HOLE = 1.7 if MOLDED else 3.2     # self-tapping pilot | heat-set insert
 INSERT = (3.2, 3.0)        # M2 heat-set insert OD, length (fdm)
 
 # Skates (PTFE): ovals over the screws + one on the battery door
-SKATE = (13.0, 8.0)
+SKATE = (11.0, 7.0)        # over each screw
+SKATE_FRONT = (14.0, 6.0)  # two at the nose
+SKATE_FRONT_XY = (15.0, 50.0)
 
 # Materials (g/cm^3) for the mass / centre-of-gravity estimate
 DENSITY = {"shell": 1.20 if MOLDED else 1.26,   # PC/ABS | PLA

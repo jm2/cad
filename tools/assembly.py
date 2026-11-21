@@ -48,7 +48,30 @@ def _bbox_gap(sa, sb) -> float:
     return float(np.linalg.norm(gaps))
 
 
-def check_pairs(asm: Assembly, near: float = 2.0) -> list[PairResult]:
+def _manifold(shape):
+    """Closed mesh of a part as a manifold3d Manifold (None if not manifold)."""
+    import manifold3d as m3
+    import trimesh
+
+    from tools.model_io import mesh_arrays
+
+    v, f = mesh_arrays(shape)
+    tm = trimesh.Trimesh(v, f, process=True)
+    tm.merge_vertices()
+    try:
+        m = m3.Manifold(m3.Mesh(vert_properties=np.asarray(tm.vertices, np.float32),
+                                tri_verts=np.asarray(tm.faces, np.uint32)))
+    except Exception:
+        return None
+    return m if m.status() == m3.Error.NoError and not m.is_empty() else None
+
+
+def check_pairs(asm: Assembly, near: float = 2.0, exact: bool = False) -> list[PairResult]:
+    """Mesh-first pair check: manifold3d booleans and min_gap screen every
+    pair in milliseconds; exact BRep booleans / distances run only to confirm
+    pairs the mesh flags (overlap, near-contact, or a clearance rule within
+    reach). exact=True forces the BRep path for every pair."""
+    mans = {} if exact else {k: _manifold(s) for k, s in asm.parts.items()}
     out = []
     for a, b in itertools.combinations(asm.parts, 2):
         sa, sb = asm.parts[a], asm.parts[b]
@@ -58,6 +81,17 @@ def check_pairs(asm: Assembly, near: float = 2.0) -> list[PairResult]:
         gap = _bbox_gap(sa, sb)
         if gap > max(near, req or 0):
             continue
+        ma, mb = mans.get(a), mans.get(b)
+        need_exact = exact or ma is None or mb is None
+        if not need_exact:
+            m_overlap = (ma ^ mb).volume() if gap == 0 else 0.0
+            m_gap = 0.0 if m_overlap > 1e-3 else ma.min_gap(mb, max(near, (req or 0) + 0.5))
+            # mesh chordal error is ~0.03 mm: confirm anything close exactly
+            if m_overlap > 1e-3 or m_gap < 0.1 or (req is not None and m_gap < req + 0.1):
+                need_exact = True
+            else:
+                out.append(PairResult(a, b, 0.0, float(m_gap), allowed, req, "ok", "mesh"))
+                continue
         overlap = 0.0
         if gap == 0:
             try:
@@ -104,6 +138,9 @@ def main(argv=None):
     ap.add_argument("--near", type=float, default=2.0,
                     help="skip pairs whose bboxes are further apart (mm)")
     ap.add_argument("--per-part", action="store_true")
+    ap.add_argument("--exact", action="store_true",
+                    help="BRep booleans/distances for every pair (slow)")
+    ap.add_argument("--quiet", action="store_true", help="only print non-ok pairs")
     a = ap.parse_args(argv)
     t0 = time.perf_counter()
     asm = load_assembly(a.model)
@@ -116,8 +153,13 @@ def main(argv=None):
             bad += not r.ok()
             print(f"  {k:24s} valid={r.valid} watertight={r.watertight} "
                   f"vol={r.volume_mm3:10.2f} mm3  {'PASS' if r.ok() else 'FAIL: ' + '; '.join(r.failures)}")
-    rows = check_pairs(asm, a.near)
-    print(format_pairs(rows))
+    rows = check_pairs(asm, a.near, a.exact)
+    shown = [r for r in rows if r.status in ("FAIL", "WARN")] if a.quiet else rows
+    if a.quiet and not shown:
+        n_c = sum(r.status == "contact" for r in rows)
+        print(f"all {len(rows)} near pairs clear ({n_c} declared contacts)")
+    else:
+        print(format_pairs(shown))
     fails = [r for r in rows if r.status == "FAIL"]
     warns = [r for r in rows if r.status == "WARN"]
     bad += len(fails)

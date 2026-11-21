@@ -75,12 +75,10 @@ def wheel_slot_half():
 
 
 def wheel_slot_y():
-    """(rear, front) y of the wheel opening: the wheel chord at the inner
-    surface plus clearance."""
-    zc = L.wheel_axis_z()
-    r = P.WHEEL_D / 2
-    dz = form.surface_z(form.top_cavity(), 0, P.WHEEL_Y) - zc
-    half = math.sqrt(max(r * r - dz * dz, 0)) + P.WHEEL_CLEAR + 0.5
+    """(rear, front) y of the wheel opening: the full wheel diameter plus
+    clearance (the shell slopes down ahead of the wheel, so a chord-sized
+    slot leaves the tyre too close to the underside just past it)."""
+    half = P.WHEEL_D / 2 + P.WHEEL_CLEAR
     return P.WHEEL_Y - half, P.WHEEL_Y + half
 
 
@@ -100,7 +98,9 @@ def button_region(sign) -> bd.Solid:
     pts = [(sign * x, y) for x, y in pts]
     w = bd.Wire.make_polygon([bd.Vector(x, y, 0) for x, y in pts], close=True)
     f = bd.Face(w)
-    return bd.extrude(f.moved(bd.Location((0, 0, P.Z_SPLIT - 1))), amount=40)
+    # explicit +Z: the mirrored (left) outline has a reversed face normal,
+    # and a plain extrude then went DOWN and missed the shell
+    return bd.extrude(f.moved(bd.Location((0, 0, P.Z_SPLIT - 1))), amount=40, dir=(0, 0, 1))
 
 
 def slot_lines(sign, rear=True):
@@ -153,7 +153,7 @@ def small_top_button(cx, cy, lx, ly):
     pad = prism_z(cx, cy, lx, ly, r, f_bot, 60) & form.top_outer()
     flange = prism_z(cx, cy, lx + 2 * fl, ly + 2 * fl, r + fl, f_bot, f_top)
     stem = top_stem_z() + P.SW_PRETRAVEL
-    post = L.cyl_z(cx, cy, stem, P.POST_D, f_bot - stem + 0.01)
+    post = L.post_z(cx, cy, stem, P.POST_D, f_bot - stem + 0.01, free_end="bottom")
     return (pad + flange + post).solids()[0], prism_z(cx, cy, lx + 2 * P.GAP, ly + 2 * P.GAP, r + P.GAP, f_top - 2, 60)
 
 
@@ -176,15 +176,18 @@ def small_side_button(sign, cy):
 
 # ----------------------------------------------------------------- FDM hinge
 def hinge_geom(sign):
-    """(axis y, axis z, knuckle x-centres, lug x-centres) for one button."""
+    """(axis y, axis z, knuckle x-centres, lug x-centres) for one button:
+    knuckle - lug - knuckle, packed between the spine and the side boards
+    (inside the button's own plan region so the knuckles never touch the
+    fixed spine)."""
     yr = P.BTN_REAR_Y
-    xa, xb = P.SPINE_HALF + 2.5, outer_x(yr) - 3.0
+    kx, _ = P.HINGE_KNUCKLE
+    xa = P.SPINE_HALF + P.GAP / 2 + P.FIT + kx / 2 + 0.05
+    xl = xa + kx + P.FIT + 0.05
+    xb = xl + kx + P.FIT + 0.05
     ya = yr - 1.5
     za = min(ceiling(sign * x, yr) for x in (xa, xb)) - 4.5
-    kx, _ = P.HINGE_KNUCKLE
-    knuckles = [xa, xb]
-    lugs = [xa - kx - P.FIT, xb + kx + P.FIT]
-    return ya, za, [sign * x for x in knuckles], [sign * x for x in lugs]
+    return ya, za, [sign * xa, sign * xb], [sign * xl]
 
 
 def knuckle(x, ya, za, button_roof):
@@ -211,16 +214,34 @@ def hinge_pin(sign):
     return L.cyl_x(x0, ya, za, P.HINGE_PIN_D, x1 - x0)
 
 
+# ------------------------------------------------------- bosses and tabs
+def top_boss(x, y):
+    """(boss to add, hole to cut): moulded = self-tapping pilot; FDM = M2
+    heat-set insert pocket with a pilot beyond it for the screw tip."""
+    z0 = P.Z_SPLIT
+    col = L.post_z(x, y, z0, P.BOSS_OD, ceiling(x, y) + 1.0 - z0, free_end="bottom") & form.top_outer()
+    if P.MOLDED:
+        hole = L.cyl_z(x, y, z0 - 1, P.BOSS_HOLE, 1 + 9.0)
+    else:
+        d, l = P.INSERT
+        hole = L.cyl_z(x, y, z0 - 1, P.BOSS_HOLE, 1 + l + 0.5) + L.cyl_z(x, y, z0, 2.2, 9.0)
+    return col, hole
+
+
 # ------------------------------------------------------------------ build
 def post(x, y):
     z0 = L.plunger_top_main() + P.SW_PRETRAVEL
-    return L.cyl_z(x, y, z0, P.POST_D, ceiling(x, y) + 1.0 - z0)
+    return L.post_z(x, y, z0, P.POST_D, ceiling(x, y) + 1.0 - z0, free_end="bottom")
 
 
 @lru_cache(maxsize=1)
 def build_top() -> dict[str, bd.Solid]:
     shell = form.top_shell_raw()
     parts = {}
+    # screw bosses and nose tabs
+    for x, y in P.SCREW_XY:
+        col, hole = top_boss(x, y)
+        shell = shell + col - hole
     # wheel opening
     ws0, ws1 = wheel_slot_y()
     xs = wheel_slot_half()
@@ -238,6 +259,8 @@ def build_top() -> dict[str, bd.Solid]:
     for sign, name in ((-1, "btn_left"), (1, "btn_right")):
         for ln in slot_lines(sign, rear=P.FDM):
             shell = shell - strip(ln, P.GAP)
+        # nose edge clears the base rim by NOSE_GAP (room for button travel)
+        shell = shell - (button_region(sign) & zbox(-40, 40, -70, 80, P.Z_SPLIT - 1, P.Z_SPLIT + P.NOSE_GAP))
         sw = P.SW_L_XY if sign < 0 else P.SW_R_XY
         if P.MOLDED:
             band = zbox(min(sign * P.SPINE_HALF, sign * outer_x(P.BTN_REAR_Y)),

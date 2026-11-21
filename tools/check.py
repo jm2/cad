@@ -148,8 +148,11 @@ def wall_thickness(mesh, samples: int = 3000, seed: int = 0) -> dict:
     """Ray-cast estimate of local wall thickness.
 
     Area-weighted random surface points shoot a ray along the inward normal;
-    the distance to the first surface where the ray *exits* material (hit
-    normal facing along the ray) is the local thickness. Reported as min and
+    the distance to the first surface where the ray exits material through a
+    roughly parallel opposite wall (exit normal within 60 deg of the ray) is
+    the local thickness. Exits through walls at a steep angle (the sides of
+    slots and openings next to an edge) are skipped, so cut edges don't read
+    as thin. Reported as min and
     low percentiles: 'min' can be noisy at sharp edges, so assert on p01.
     """
     import pyvista as pv
@@ -175,7 +178,9 @@ def wall_thickness(mesh, samples: int = 3000, seed: int = 0) -> dict:
         if tree.IntersectWithLine(a, b, hits_p, hits_c) == 0:
             continue
         for k in range(hits_p.GetNumberOfPoints()):
-            if np.dot(fn[hits_c.GetId(k)], d) > 0.1:   # exiting surface
+            # first exit through a roughly PARALLEL opposite wall: hits on
+            # cut walls (slots, openings) beside an edge are not thickness
+            if np.dot(fn[hits_c.GetId(k)], d) > 0.5:
                 q = np.array(hits_p.GetPoint(k))
                 th.append(float(np.linalg.norm(q - p)))
                 at.append(p)

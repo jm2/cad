@@ -141,7 +141,33 @@ icon in the sidebar). It listens on port 3939. Then `make view` or run
 `model.py` (its `__main__` calls `ocp_vscode.show`). In other scripts use
 `from ocp_vscode import show; show(part)`.
 
+## Fulcrum (projects/fulcrum)
+
+Ambidextrous wired/wireless mouse, two variants from one master:
+`make <target> VARIANT=molded|fdm`; targets: build render exploded sections
+test asm check draft overhang export print slice roundtrip mass.
+Sources: params.py (everything) -> form.py (master surfaces) -> layout.py
+(bought-in envelopes, derived positions) -> top.py / base.py / wheel.py ->
+model.py (assembly metadata) ; test_model.py (functional asserts), mass.py.
+Parts are cached as BREP in out/cache/<variant>-<hash of geometry sources>;
+a cold build is ~3-5 min, cached loads are instant. After changing geometry,
+run `make test asm` for BOTH variants and look at renders + sections.
+Design rules learned the hard way: keep every closed contour at the same
+point count with uniform parameters (form.closed_spline) or lofts and STEP
+files explode in size; derive positions from the form via form.surface_z /
+half_width rather than hard-coding heights.
+
 ## Known quirks
+
+- build123d's `tessellate()` asks OCCT for a RELATIVE deflection; use
+  tools.model_io.mesh_arrays/to_pyvista (absolute) for anything quantitative.
+- build123d's `Shape.volume`/`.area` use fixed-order integration that can be
+  tens of % wrong on lofted B-spline solids: use tools.model_io.mass_props /
+  volume / area (adaptive).
+- tools.assembly is mesh-first (manifold3d booleans + min_gap) and confirms
+  flagged pairs with exact BRep booleans; `--exact` forces BRep everywhere.
+- Plane-split / boolean with a loft that closes in an apex vertex is fragile;
+  close lofts with tiny end sections or contour lofts instead.
 
 - Wall-thickness is a ray-cast estimate. Assert on p1, not min.
 - Bambu Studio's CLI ignores `inherits` in presets; `tools.bambu.resolve`

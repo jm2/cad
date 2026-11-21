@@ -1,5 +1,5 @@
 """Build cache: parts are stored as BREP files under out/cache/<key>/, keyed
-on a hash of every .py source in this project plus the VARIANT, so any edit
+on a hash of the geometry sources plus the VARIANT, so any edit
 rebuilds and an unchanged model loads in a second instead of minutes."""
 
 from __future__ import annotations
@@ -15,13 +15,16 @@ import params as P
 HERE = Path(__file__).parent
 
 
+GEOMETRY_SOURCES = ("params.py", "form.py", "layout.py", "top.py", "base.py", "wheel.py")
+
+
 def key() -> str:
+    """Hash of the geometry-defining sources + variant (tests, reports and
+    model metadata like colours do not invalidate the cache)."""
     h = hashlib.sha256(P.VARIANT.encode())
-    for f in sorted(HERE.glob("*.py")):
-        if f.name.startswith("test_"):
-            continue
-        h.update(f.name.encode())
-        h.update(f.read_bytes())
+    for name in GEOMETRY_SOURCES:
+        h.update(name.encode())
+        h.update((HERE / name).read_bytes())
     return h.hexdigest()[:16]
 
 

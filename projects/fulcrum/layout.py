@@ -27,6 +27,17 @@ def cyl_z(cx, cy, z0, d, h) -> bd.Solid:
     return bd.Pos(cx, cy, z0) * bd.Cylinder(d / 2, h, align=MIN)
 
 
+def post_z(cx, cy, z0, d, h, free_end="top") -> bd.Solid:
+    """Vertical post/boss of diameter d at its root; in the moulded variant
+    it tapers by BOSS_DRAFT toward its free end so it releases from the tool."""
+    if not P.BOSS_DRAFT:
+        return cyl_z(cx, cy, z0, d, h)
+    r_root = d / 2
+    r_free = max(r_root - h * math.tan(math.radians(P.BOSS_DRAFT)), 0.3)
+    rb, rt = (r_root, r_free) if free_end == "top" else (r_free, r_root)
+    return bd.Pos(cx, cy, z0) * bd.Cone(rb, rt, h, align=MIN)
+
+
 def cyl_x(x0, cy, cz, d, length) -> bd.Solid:
     """Cylinder along +X starting at x0."""
     return bd.Pos(x0, cy, cz) * bd.Rot(0, 90, 0) * bd.Cylinder(d / 2, length, align=MIN)
@@ -194,22 +205,45 @@ def bat_plate() -> bd.Solid:
 
 
 def receiver() -> bd.Solid:
-    x, y = RECEIVER_XY
-    return box(x, y, FLOOR_TOP, *P.RECEIVER)
-
-
-RECEIVER_XY = (BAT_R_OUT + 1.0 + P.RECEIVER[0] / 2, -26.0)
+    """2.4 GHz receiver stowed in its underside garage (lying flat, its
+    bottom 0.3 mm inside the base face)."""
+    x, y = P.RECEIVER_XY
+    rx, ry, rz = P.RECEIVER
+    return box(x, y, P.Z_BASE + 0.3, rx, ry, rz)
 
 
 def encoder() -> bd.Solid:
-    """Optical interrupter (dummy) straddling the slotted encoder disc on the
-    wheel's right flank, reading below the axle."""
-    ex, ey, ez = P.ENCODER
-    disc_x = P.WHEEL_W / 2 + 0.6 + P.ENC_DISC_T / 2       # disc mid-plane
-    zc = wheel_axis_z() - P.ENC_DISC_D / 2 + 2.0           # reads the disc rim
-    body = box(disc_x, P.WHEEL_Y, zc - ez / 2, ex, ey, ez)
-    slot = box(disc_x, P.WHEEL_Y, zc - ez / 2 + 2.0, P.ENC_GAP, ey + 1, ez)
-    return (body - slot).solids()[0]
+    """Hall-sensor board (dummy) under the hub's ring magnet: a small board
+    reaching from the right yoke arm, two Hall ICs facing the magnet rim."""
+    od, _, t = P.ENC_MAGNET
+    zc = wheel_axis_z()
+    bt, bl = P.ENC_BOARD
+    ic_h = 1.0
+    z_ic_top = zc - od / 2 - P.ENC_GAP
+    z_b1 = z_ic_top - ic_h
+    xm = P.ENC_MAGNET_X + t / 2
+    board = box((xm - 2.0 + P.YOKE_ARM_X[1]) / 2, P.WHEEL_Y, z_b1 - bt,
+                P.YOKE_ARM_X[1] - (xm - 2.0), bl, bt)
+    ics = box(xm, P.WHEEL_Y - 1.6, z_b1, 1.6, 2.0, ic_h) + box(xm, P.WHEEL_Y + 1.6, z_b1, 1.6, 2.0, ic_h)
+    return (board + ics).solids()[0] if len((board + ics).solids()) == 1 else bd.Compound(children=[board, ics])
+
+
+def sw_click() -> bd.Solid:
+    """Wheel click: tact switch under the yoke's front beam."""
+    return tact(0, P.YOKE_BEAM_Y[1] + P.YOKE_T / 2, PCB_TOP)
+
+
+def sw_tilt(sign) -> bd.Solid:
+    """Right-angle tact switch on the main board, stem pointing at the yoke
+    arm's outer face (tilt left / right)."""
+    bx, by, bz, stem = P.SW_RA
+    arm_out = (P.YOKE_ARM_X[0] - P.YOKE_T) if sign < 0 else (P.YOKE_ARM_X[1] + P.YOKE_T)
+    tip = arm_out + sign * P.SW_PRETRAVEL
+    sx0 = tip + sign * stem                     # stem base = body face
+    body_c = sx0 + sign * bx / 2
+    body = box(body_c, P.WHEEL_Y, PCB_TOP, bx, by, bz)
+    st = cyl_x(min(tip, sx0), P.WHEEL_Y, PCB_TOP + bz / 2, 1.6, stem)
+    return (body + st).solids()[0]
 
 
 def power_switch() -> bd.Solid:
@@ -225,12 +259,16 @@ def conn_button() -> bd.Solid:
     return tact(x, y, P.PCB_Z, "-z")
 
 
+SCREW_L = 18.0     # M2 x 18: through the base boss into the top-shell boss
+SCREW_HEAD_Z = P.Z_BASE + P.SKATE_RECESS + 0.1   # 0.1 above the skate's top
+
+
 def screw(x, y) -> bd.Solid:
     """M2 pan head from below; head sits in a counterbore under a skate."""
     hd, hh = P.SCREW_HEAD
-    z_head = P.Z_BASE + 0.2           # head underside 0.2 above base face
+    z_head = SCREW_HEAD_Z
     head = cyl_z(x, y, z_head, hd, hh)
-    shank = cyl_z(x, y, z_head + hh - 0.05, P.SCREW_D, 8.0 + 0.05)
+    shank = cyl_z(x, y, z_head + hh - 0.05, P.SCREW_D, SCREW_L + 0.05)
     return (head + shank).solids()[0]
 
 
@@ -249,6 +287,9 @@ def dummies() -> dict[str, bd.Solid]:
         "bat_plate": bat_plate(),
         "receiver": receiver(),
         "encoder": encoder(),
+        "sw_click": sw_click(),
+        "sw_tilt_l": sw_tilt(-1),
+        "sw_tilt_r": sw_tilt(+1),
         "power_switch": power_switch(),
         "conn_button": conn_button(),
     }

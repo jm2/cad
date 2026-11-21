@@ -5,12 +5,14 @@ import json
 import os
 
 import FreeCAD
+import MeshPart
 import Part
 
 path = os.environ["FC_STEP"]
 shape = Part.Shape()
 shape.read(path)
-bb = shape.BoundBox
+# optimal box (tight on B-splines); BoundBox is built from control points
+bb = shape.optimalBoundingBox(False, False)
 print("FCJSON " + json.dumps({
     "freecad": ".".join(FreeCAD.Version()[:3]),
     "occt": Part.OCC_VERSION,
@@ -18,7 +20,9 @@ print("FCJSON " + json.dumps({
     "valid": shape.isValid(),
     "solids": len(shape.Solids),
     "faces": len(shape.Faces),
-    "volume": shape.Volume,
+    "volume": shape.Volume,            # OCCT default (fixed-order) integration
+    "mesh_volume": MeshPart.meshFromShape(Shape=shape, LinearDeflection=0.01,
+                                          AngularDeflection=0.1, Relative=False).Volume,
     "area": shape.Area,
     "bbox_min": [bb.XMin, bb.YMin, bb.ZMin],
     "bbox_max": [bb.XMax, bb.YMax, bb.ZMax],
