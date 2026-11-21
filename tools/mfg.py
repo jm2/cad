@@ -40,7 +40,7 @@ import vtk
 # categorical maps (value -> colour)
 DRAFT_CATS = {0: ("release +pull", "#5b8fd9"), 1: ("release -pull", "#5fb36b"),
               2: ("no draft", "#f2c14e"), 3: ("undercut", "#d9534f"),
-              4: ("flat (normal to pull)", "#c9d6e8")}
+              4: ("flat", "#c9d6e8")}
 OVER_CATS = {0: ("ok", "#7fb685"), 1: ("needs support", "#d9534f"),
              2: ("bed contact", "#5b8fd9"), 3: ("near limit", "#f2c14e")}
 
@@ -130,9 +130,17 @@ def overhang_analysis(shape: bd.Shape, rot=(0, 0, 0), angle=45.0, warn_band=5.0)
     return s, m, totals
 
 
-def _render_cats_simple(mesh, shape, cats, out_png, view, title):
-    """Categorical map with a text legend (scalar bars are poor at categories)."""
+def _render_cats_simple(mesh, shape, cats, out_png, view, title, plane=None):
+    """Categorical map with a text legend (scalar bars are poor at categories).
+    plane: optional (origin, normal); the +normal side is clipped away so
+    internal faces (e.g. undercuts inside a shell) become visible."""
     from tools.render import VIEWS, _finish, _setup_camera
+
+    if plane is not None:
+        o, n = plane
+        mesh = mesh.clip(normal=tuple(n), origin=tuple(o), invert=True)
+        from tools.render import section_shape
+        shape, _ = section_shape(shape, bd.Plane(origin=tuple(o), z_dir=tuple(n)))
 
     pl = pv.Plotter(off_screen=True, window_size=(1200, 900))
     pl.set_background("white")
@@ -140,14 +148,15 @@ def _render_cats_simple(mesh, shape, cats, out_png, view, title):
                     for c in mesh.cell_data["category"]], np.uint8)
     mesh = mesh.copy()
     mesh.cell_data["rgb"] = rgb
-    pl.add_mesh(mesh, scalars="rgb", rgb=True, smooth_shading=False)
-    e = edge_lines(shape)
+    pl.add_mesh(mesh, scalars="rgb", rgb=True, smooth_shading=False,
+                ambient=0.55, diffuse=0.5, specular=0.0)
+    e = edge_lines(shape) if shape is not None else None
     if e is not None:
         pl.add_mesh(e, color="#1a1a1a", line_width=1, opacity=0.6)
     present = sorted(set(int(c) for c in mesh.cell_data["category"]))
     pl.add_legend([[cats[k][0], cats[k][1]] for k in present], bcolor="white",
-                  face="rectangle", size=(0.24, 0.05 * len(present)),
-                  loc="upper right")
+                  face="rectangle", size=(0.24, 0.04 * len(present)),
+                  loc="upper right", border=True)
     d, up = VIEWS[view]
     b = np.array(mesh.bounds)
     _setup_camera(pl, b[0::2], b[1::2], d, up, (1200, 900), 1.15)
@@ -174,7 +183,14 @@ def main(argv=None):
     ap.add_argument("-o", "--outdir", default="out/mfg")
     ap.add_argument("--views", default=None)
     ap.add_argument("--name", default=None)
+    ap.add_argument("--section", help="also render maps clipped at plane "
+                    "'y=0' or 'ox,oy,oz:nx,ny,nz' (shows internal faces)")
     a = ap.parse_args(argv)
+    plane = None
+    if a.section:
+        from tools.render import parse_plane
+        pp = parse_plane(a.section)
+        plane = (tuple(pp.origin), tuple(pp.z_dir))
     asm = load_assembly(a.part)
     name = a.name or ("assembly" if len(asm) > 1 else next(iter(asm.parts)))
     out = Path(a.outdir)
@@ -207,6 +223,12 @@ def main(argv=None):
             p = _render_cats_simple(m, shp, cats, out / f"{name}_{k}_{a.mode}_{v}.png",
                                     v, f"{k} {a.mode}")
             print(f"    {p}")
+        if plane is not None:
+            for v in views:
+                p = _render_cats_simple(m, shp, cats,
+                                        out / f"{name}_{k}_{a.mode}_section_{v}.png",
+                                        v, f"{k} {a.mode} (section)", plane)
+                print(f"    {p}")
     if a.max_bad_area is not None:
         ok = bad_total <= a.max_bad_area
         print(f"MFG {a.mode.upper()} {'PASS' if ok else 'FAIL'}: problem area "

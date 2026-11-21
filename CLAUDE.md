@@ -17,7 +17,11 @@ human review in FreeCAD. STEP is the only interchange with FreeCAD.
                              plus NAME_sheet.png tiling every view
     check.py                 validity, watertight, bbox, volume/mass, wall thickness,
                              interference(), cylinders(), Dims asserts
-    export.py                STEP + STL + 3MF into out/
+    export.py                STEP + STL + 3MF into out/ (--print: per-part, print-oriented)
+    assembly.py              pairwise interference / contact / clearance matrix
+    mfg.py                   draft + undercut maps (moulding), overhang maps (FDM)
+    selftest/model.py        assembly with deliberate faults: run tools against it
+                             after changing them (expected results in its docstring)
     slice.py                 slicer wrapper: Bambu Studio (default) or PrusaSlicer
     bambu.py                 Bambu install + preset resolver (`python -m tools.bambu list`)
     roundtrip.py             compare STEP in build123d vs FreeCAD (freecadcmd)
@@ -52,6 +56,16 @@ human review in FreeCAD. STEP is the only interchange with FreeCAD.
    `FILAMENT="Bambu PETG HF"`, `PROCESS="0.16mm Optimal"`.
 7. **Commit** once it builds, renders correctly and passes checks:
    `git add -A && git commit -m "<project>: <what changed>"`.
+
+## Assemblies
+
+`build()` may return `{name: Part}`. Optional metadata in model.py:
+`COLORS`, `EXPLODE` (offsets for exploded renders), `ALLOWED_CONTACT` (pairs
+that may touch/overlap), `MIN_CLEARANCE` ({(a, b): mm}), `PRINT_ORIENT`
+({name: (rx, ry, rz)} degrees), `PULL` ({name: mould pull direction}).
+Extra make targets: `asm`, `exploded`, `draft`, `overhang`, `print`,
+`slice-print`. Renders accept `--xray part1,part2` (translucent) and
+`--only ...`; mfg maps accept `--section PLANE` to reveal internal faces.
 
 ## Rules
 
