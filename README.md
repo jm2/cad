@@ -10,14 +10,14 @@ design, end to end, from a terminal.
 
 | | |
 |---|---|
-| ![moulded variant](docs/img/molded_iso.png) | ![exploded](docs/img/molded_exploded.png) |
-| Moulded variant | Exploded: 53 parts (bought-in parts are envelopes) |
-| ![side section](docs/img/section_side.png) | ![wheel section](docs/img/section_wheel.png) |
-| Section x = 0: battery on its door, top board + DPI/mode posts, wheel, sensor, USB-C | Section through the wheel: cradle, ring magnet over Hall board, tilt switches, side buttons |
-| ![FDM variant](docs/img/fdm_iso_back.png) | ![underside](docs/img/molded_bottom.png) |
-| FDM variant: separate main buttons on pivot pins | Underside: battery door, receiver garage, 7 skates, sensor window |
-| ![draft map](docs/img/draft_base.png) | ![overhang map](docs/img/overhang_top.png) |
-| Moulding check: base draft / undercut map | Printing check: top shell overhang map (X1C, 45°) |
+| ![moulded variant](docs/img/molded_iso.png) | ![nose view](docs/img/molded_front.png) |
+| Moulded variant: pale dome, dark centre spine, metal wheel | Nose view: the black base flares like the foot of a bell curve into symmetric rests |
+| ![exploded](docs/img/molded_exploded.png) | ![FDM exploded](docs/img/fdm_iso_back.png) |
+| Exploded, moulded (53 parts; bought-in parts are envelopes) | Exploded, FDM: separate pinned buttons, printed wheel with steel dowel weights |
+| ![side section](docs/img/section_side.png) | ![grip section](docs/img/section_wheel.png) |
+| Section x = 0: battery on its door, top board + DPI/mode posts in the spine, wheel, sensor | Section through the grip: bell-foot rests, side buttons on their switches, battery channel |
+| ![underside](docs/img/molded_bottom.png) | ![draft map](docs/img/draft_base.png) |
+| Underside: battery door, receiver garage, cored pockets under the rests, 7 skates | Moulding check: base draft / undercut map |
 
 An original design with gaming-mouse-level detail, and two variants built from
 one parametric master:
@@ -31,17 +31,22 @@ one parametric master:
 | Fits | 0.15 mm | 0.30 mm |
 
 **Features**
-- Symmetric pebble form (contour-lofted dome + rolled base), parting line at the
-  widest silhouette so the base and top release from a two-plate tool.
+- Symmetric form: a pebble dome in the top shell, a dark centre spine (separate
+  part) carrying the wheel, mode toggle and DPI buttons, and a black base that
+  flares out like the foot of a bell curve into thin, wide rests on both
+  sides (thumb rest in one hand, ring/pinky rest in the other).
 - 12 inputs: left/right, wheel click + tilt left/right, wheel-mode toggle,
   DPI up/down, two side buttons on each flank.
-- Scroll wheel with rubber tyre, optical encoder disc and ratchet detent ring,
-  on a cradle that floats on the click and tilt switches.
+- One-piece die-cast zinc scroll wheel (~16 g flywheel for free-spin, ratchet
+  detent ring on the hub), magnetic encoder, on a cradle that floats on the
+  click and tilt switches. FDM: printed wheel with six steel dowel weights.
 - Wired (USB-C) and wireless: removable AA (NiMH, recharged over USB-C) under a
   hinged, latched door. Remove it for a lighter wired mouse, or fit an
   AA-size weight slug. Receiver garage on the underside.
 - Optical sensor at the PixArt-standard 2.4 mm lens height, 7 PTFE skates (four
   hide the screws), power switch and connect button on the underside.
+- Moulded base: the flare is cored from below by pockets with ribs (the
+  cavity walls are straight so the core releases); FDM: solid flare.
 
 **Out of scope:** the PCB itself (boards, switches, sensor, battery and
 connectors are modelled as placeholder envelopes, and parts are designed
@@ -57,22 +62,20 @@ STEP with the same volume and bounding box.
 
 | | moulded | FDM |
 |---|---|---|
-| Size (L x W x H) | 128.0 x 64.0 x 37.5 mm | same |
-| Parts | 53 | 57 (separate buttons + 2 pins) |
-| Interference / clearance check | 0 overlaps, all clearances met (167 pairs) | 0 overlaps (213 pairs) |
+| Size (L x W x H) | 130.7 x 71.9 x 37.5 mm (body 59 mm wide, rests included) | same |
+| Parts | 53 | 63 (separate buttons, 2 pins, 6 wheel dowels) |
+| Interference / clearance check | 0 overlaps, all clearances met (185 pairs) | 0 overlaps (254 pairs) |
 | Button pre-travel (9 buttons) | 0.30 mm, every post | 0.40 mm, every post |
-| Mass with NiMH AA, CoG | 109 g, (0.5, -4.0, 13.3) mm | 121 g, (0.5, -4.2, 13.5) mm |
-| Shell walls (5th percentile) | top 1.55 mm, base 1.53 mm | top 1.81 mm |
-| Draft (top shell / base) | outer faces >= 3°; undercuts 91 / 183 mm² (side-button openings, USB-C, nose tabs: side actions) | n/a |
-| Print (X1C, Bambu PLA Basic, 0.20 mm) | n/a | 14 parts on one plate: 3 h 32 min, 72.9 g, supports under the dome |
-| FreeCAD STEP round trip | pass (mesh volume within 0.05%, bbox exact) | pass |
+| Mass with NiMH AA, CoG | 129 g, CoG (0.4, -0.2, 13.6) mm, over the centre | <= 132 g (solid-plastic upper bound) |
+| Draft / undercut (top shell, spine, base) | outer faces >= 3°; 101 / 17 / 260 mm² (side-button openings, USB notch, contact slots: side actions) | n/a |
+| Print (X1C, Bambu PLA Basic, 0.20 mm) | n/a | one plate: 3 h 14 min, 70 g, supports under the dome and spine |
+| FreeCAD STEP round trip | pass (mesh volume within 0.1%, bbox exact) | pass |
 
-**Known limitations / next steps:** the centre of gravity sits ~21 mm behind the
-sensor with a battery fitted (it moves forward in wired mode with the battery
-out); posts, bosses and internal walls carry only a 0.75° taper (internal
-vertical walls are flagged no-draft); local thin spots (contact slots, latch
-pockets) are under 2% of the base surface; the FDM top shell needs support
-inside the dome; ergonomics are unverified until someone holds a print.
+**Known limitations / next steps:** internal posts, bosses and walls carry
+only a 0.75° taper or none (flagged as no-draft); the moulded base's lip zone
+is ~3.7 mm thick locally; the FDM top shell and spine need supports; the
+ratchet spring and mode-toggle latch are not modelled; ergonomics are
+unverified until someone holds a print.
 
 ## Workspace
 
