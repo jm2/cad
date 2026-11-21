@@ -20,7 +20,7 @@ import sys
 import time
 from dataclasses import dataclass
 
-from tools.model_io import Assembly, load_assembly
+from tools.model_io import Assembly, load_assembly, volume
 
 import numpy as np
 
@@ -62,7 +62,7 @@ def check_pairs(asm: Assembly, near: float = 2.0) -> list[PairResult]:
         if gap == 0:
             try:
                 common = sa & sb
-                overlap = common.volume if common is not None else 0.0
+                overlap = volume(common) if common is not None and common.solids() else 0.0
             except Exception as ex:  # boolean failure is itself a finding
                 out.append(PairResult(a, b, float("nan"), float("nan"), allowed,
                                       req, "FAIL", f"boolean failed: {ex}"))

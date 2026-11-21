@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from tools.check import is_valid
-from tools.model_io import load_part
+from tools.model_io import area, load_part, volume
 
 HERE = Path(__file__).parent
 
@@ -38,7 +38,7 @@ def main(argv=None):
     s = load_part(step)
     bb = s.bounding_box(optimal=True)
     mine = {"valid": is_valid(s), "solids": len(s.solids()), "faces": len(s.faces()),
-            "volume": s.volume, "area": s.area,
+            "volume": volume(s), "area": area(s),
             "bbox_min": list(bb.min), "bbox_max": list(bb.max)}
     fc = freecad_props(step)
     print(f"FreeCAD {fc['freecad']} (OCCT {fc['occt']})  vs  build123d/OCP")

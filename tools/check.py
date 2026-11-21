@@ -22,7 +22,7 @@ import math
 import sys
 from dataclasses import asdict, dataclass, field
 
-from tools.model_io import load_part, to_trimesh
+from tools.model_io import area as _area, load_part, mass_props, to_trimesh, volume as _volume
 
 import build123d as bd
 import numpy as np
@@ -108,10 +108,8 @@ def report(src, density: float = DENSITY["PLA"], wall: bool = False,
     shape = load_part(src)
     bb = shape.bounding_box()
     mesh = to_trimesh(shape)
-    vol = shape.volume
+    vol, com = mass_props(shape)
     solids = shape.solids()
-    com = bd.Compound(children=list(solids)).center(bd.CenterOf.MASS) if solids \
-        else shape.center()
     r = Report(
         valid=is_valid(shape),
         n_solids=len(solids),
@@ -120,7 +118,7 @@ def report(src, density: float = DENSITY["PLA"], wall: bool = False,
         manifold_ok=manifold_ok(mesh),
         euler=int(mesh.euler_number),
         bbox_min=tuple(bb.min), bbox_max=tuple(bb.max), size=tuple(bb.size),
-        volume_mm3=vol, area_mm2=shape.area, center_of_mass=tuple(com),
+        volume_mm3=vol, area_mm2=_area(shape), center_of_mass=tuple(com),
         density_g_cm3=density, mass_g=vol * density / 1000.0,
         mesh_volume_mm3=float(abs(mesh.volume)),
     )
@@ -197,7 +195,7 @@ def interference(a, b, tol_mm3: float = 1e-6) -> float:
     """Overlap volume (mm^3) between two parts; 0.0 means no interference."""
     sa, sb = load_part(a), load_part(b)
     common = sa & sb
-    v = common.volume if common is not None else 0.0
+    v = _volume(common) if common is not None and common.solids() else 0.0
     return v if v > tol_mm3 else 0.0
 
 
@@ -252,7 +250,7 @@ class Dims:
 
     @property
     def volume(self):
-        return self.shape.volume
+        return _volume(self.shape)
 
     def holes(self) -> list[float]:
         """Sorted diameters of all cylindrical faces (holes & bosses)."""

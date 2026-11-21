@@ -15,7 +15,7 @@ from pathlib import Path
 
 from tools.check import is_valid
 from tools.export import export
-from tools.model_io import load_parts
+from tools.model_io import load_parts, volume
 
 
 def main(argv=None):
@@ -34,7 +34,7 @@ def main(argv=None):
         bad += (not v) or not s.solids()
         print(f"built {key}: valid={v} solids={len(s.solids())} "
               f"size=({bb.size.X:.3f}, {bb.size.Y:.3f}, {bb.size.Z:.3f}) "
-              f"volume={s.volume:.3f} mm^3  [{dt:.2f}s]")
+              f"volume={volume(s):.3f} mm^3  [{dt:.2f}s]")
     name = a.name or (next(iter(parts)) if len(parts) == 1 else Path(a.model).resolve().parent.name)
     for p in export(parts, a.outdir, name, formats=("step",)):
         print(f"wrote {p}")

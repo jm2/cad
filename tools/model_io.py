@@ -88,13 +88,48 @@ def load_part(src) -> bd.Shape:
     return bd.Compound(children=list(parts.values()))
 
 
+def _face_triangles(shape: bd.Shape, tol: float, ang: float):
+    """Triangulate with an ABSOLUTE chordal deflection (build123d's
+    tessellate() asks OCCT for a *relative* one, i.e. tol x edge length,
+    which on large freeform faces gives meshes millimetres off the surface)
+    and yield (face_index, vertices Nx3, triangles Mx3) per face, with
+    triangle winding following the face orientation."""
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.TopAbs import TopAbs_REVERSED
+    from OCP.TopLoc import TopLoc_Location
+
+    BRepMesh_IncrementalMesh(shape.wrapped, tol, False, ang, True)
+    for i, face in enumerate(shape.faces()):
+        loc = TopLoc_Location()
+        tri = BRep_Tool.Triangulation_s(face.wrapped, loc)
+        if tri is None:
+            continue
+        trsf = loc.Transformation()
+        v = np.empty((tri.NbNodes(), 3))
+        for k in range(tri.NbNodes()):
+            p = tri.Node(k + 1).Transformed(trsf)
+            v[k] = (p.X(), p.Y(), p.Z())
+        f = np.empty((tri.NbTriangles(), 3), dtype=np.int64)
+        for k in range(tri.NbTriangles()):
+            f[k] = tri.Triangle(k + 1).Get()
+        f -= 1
+        if face.wrapped.Orientation() == TopAbs_REVERSED:
+            f = f[:, [0, 2, 1]]
+        yield i, v, f
+
+
 def mesh_arrays(shape: bd.Shape, tol=LINEAR_TOL, ang=ANGULAR_TOL):
     """Tessellate into (vertices Nx3 float, faces Mx3 int)."""
     tol = default_tol(shape) if tol is None else tol
-    verts, tris = shape.tessellate(tol, ang)
-    v = np.array([(p.X, p.Y, p.Z) for p in verts], dtype=float)
-    f = np.array(tris, dtype=np.int64).reshape(-1, 3)
-    return v, f
+    vs, fs, off = [], [], 0
+    for _, v, f in _face_triangles(shape, tol, ang):
+        vs.append(v)
+        fs.append(f + off)
+        off += len(v)
+    if not vs:
+        return np.zeros((0, 3)), np.zeros((0, 3), dtype=np.int64)
+    return np.vstack(vs), np.vstack(fs)
 
 
 def to_trimesh(shape: bd.Shape, tol=LINEAR_TOL, ang=ANGULAR_TOL):
@@ -115,8 +150,7 @@ def to_pyvista(shape: bd.Shape, tol=LINEAR_TOL, ang=ANGULAR_TOL):
     tol = default_tol(shape) if tol is None else tol
     all_v, all_f, ids = [], [], []
     off = 0
-    for i, face in enumerate(shape.faces()):
-        v, f = mesh_arrays(face, tol, ang)
+    for i, v, f in _face_triangles(shape, tol, ang):
         if len(f) == 0:
             continue
         all_v.append(v)
@@ -224,3 +258,30 @@ def load_assembly(src) -> Assembly:
         if len(kids) > 1 and all(getattr(c, "label", "") for c in kids):
             return Assembly({c.label: c for c in kids})
     return Assembly(parts)
+
+
+# ------------------------------------------------------------ mass properties
+def mass_props(shape: bd.Shape, eps: float = 1e-6):
+    """(volume mm^3, centre of mass (x, y, z)) with OCCT's ADAPTIVE
+    integration. build123d's .volume uses fixed-order Gauss integration,
+    which is badly wrong (tens of %) on lofted B-spline solids."""
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    g = GProp_GProps()
+    BRepGProp.VolumeProperties_s(shape.wrapped, g, eps)
+    c = g.CentreOfMass()
+    return g.Mass(), (c.X(), c.Y(), c.Z())
+
+
+def volume(shape: bd.Shape) -> float:
+    return mass_props(shape)[0]
+
+
+def area(shape: bd.Shape, eps: float = 1e-6) -> float:
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    g = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(shape.wrapped, g, eps)
+    return g.Mass()
