@@ -46,14 +46,38 @@ GAP = 0.4 if MOLDED else 0.5           # visible split gaps around buttons
 #   crown  how far the shoulders sit below the crest (rounder top = smaller)
 #   tumble inset of the base underside vs the split outline (each side)
 FORM_Y = [-64.0, -56.0, -46.0, -30.0, -12.0, 6.0, 24.0, 42.0, 56.0, 64.0]
-FORM = {   # pebble: widest at the palm, steady taper to the nose, one low arch
+FORM = {   # pebble dome; the black base flares into bell-foot rests below it
     "h":      [24.0, 30.0, 34.5, 37.0, 37.5, 36.0, 33.0, 29.0, 25.5, 24.0],
-    "w":      [27.0, 30.0, 31.5, 32.0, 31.5, 30.5, 29.5, 28.5, 27.5, 27.0],
+    "w":      [27.0, 29.0, 29.5, 29.0, 28.5, 28.0, 28.0, 28.0, 27.5, 27.0],
     # cross-section squareness above the parting line: 2 = ellipse, larger =
     # fuller shoulders (boxier); the section is a super-ellipse
     "sq":     [2.0,  2.1,  2.25, 2.35, 2.4,  2.4,  2.35, 2.3,  2.2,  2.1],
     "tumble": [3.0,  3.2,  3.5,  3.5,  3.5,  3.5,  3.5,  3.4,  3.2,  3.0],
+    # bell-foot flare of the base at the lip (mm): symmetric thumb / finger
+    # rests along the grip, a slight flare all round
+    "skirt":  [1.0,  1.2,  2.5,  5.5,  7.0,  6.5,  4.0,  1.8,  1.0,  1.0],
 }
+# Bell-foot base: below the parting line the flank flares out along a concave
+# curve to a lip at Z_LIP (the widest point, ~ a bell curve's foot), then a
+# short upright band and a rounded tuck down to the underside.
+Z_LIP = 4.5
+BELL_Q = 2.5               # concavity of the foot (higher = steeper, then flatter)
+LIP_BAND = 1.0             # upright band at the lip (gives the rest thickness)
+LIP_TUCK = 2.0             # rounded tuck from the lip in to the underside
+TUCK_P = 1.6
+
+# Centre spine (separate, contrasting part) carrying wheel, mode and DPI
+SPINE_HW = (2.5, 6.5)      # half-width at the tail end / from y=+20 forward
+SPINE_Y = (-54.0, 70.0)    # rounded tail end ... runs out over the nose
+SPINE_RECESS = 0.6         # spine surface below the top shell's surface
+SPINE_FLANGE = (1.5, 1.0)  # retaining flange: overhang under the shell, thickness
+SPINE_FLANGE_Y = (-50.0, -12.5)  # flange under fixed shell, behind the DPI buttons
+SPINE_PILLAR_XY = (0.0, 49.5)  # front support pillar down to the main board
+# Moulded base: the hollow under each bell-foot rest opens through the
+# underside (formed by the lower tool half), spanned by ribs every RIB_PITCH
+RIB_PITCH = 7.0
+POCKET_TOP = 6.5           # flat ceiling of the cored pockets (above the lip)
+RIB_T = 1.2
 # End zones: over the last END_TAIL / END_NOSE mm the sections shrink along a
 # quarter ellipse (width, and height about the parting plane) and the loft
 # closes in a point on the parting plane, which rounds both ends without any
@@ -89,13 +113,12 @@ SW_R_XY = (14.0, 44.0)
 # Main buttons: plan outline on the top surface (right button; left mirrors)
 BTN_REAR_Y = 10.0          # rear edge (flexure line / pivot) of L/R buttons
 BTN_OUTER_X = (19.5, 21.0)  # outer edge x at the nose / at the rear edge
-SPINE_HALF = 5.6           # half-width of the centre spine (wheel, mode btn)
 FLEX_T = 1.0               # moulded flexure: wall thinned to this...
 FLEX_BAND = 4.0            # ...over this band along the rear edge
 NOSE_GAP = 0.8             # main buttons' nose edge stands this far above the base rim
 POST_D = 3.6               # button plunger posts
 HINGE_PIN_D = 2.0          # FDM: steel dowel pin through the knuckles
-HINGE_KNUCKLE = (2.2, 4.0)  # FDM: knuckle thickness (x), length (y)
+HINGE_KNUCKLE = (2.0, 4.0)  # FDM: knuckle thickness (x), length (y)
 FLANGE = 1.2               # small buttons: retaining flange overhang
 FLANGE_T = 1.0
 
@@ -109,7 +132,10 @@ WHEEL_W = 7.0
 WHEEL_Y = 33.0
 WHEEL_PROUD = 5.0          # how far the wheel top stands above the shell
 WHEEL_HUB_D = 9.0
-WHEEL_TREAD_N = 30         # rubber tread ribs
+WHEEL_TREAD_N = 40         # machined axial ribs on the metal rim
+WHEEL_RIB = (0.8, 0.5)     # groove width, depth
+WHEEL_WEB_RECESS = 0.8     # web faces recessed from the rim each side
+WHEEL_DOWEL = (3.0, 6.0)   # FDM: steel dowel weights (dia, length), x6
 WHEEL_DETENTS = 24
 AXLE_D = 2.0
 WHEEL_CLEAR = 0.8          # wheel to shell slot, each side / ends
@@ -133,11 +159,11 @@ NOSE_TAB_XY = (21.0, 52.0)
 NOSE_TAB = (1.2, 5.0, 3.0)  # x, y, depth below the parting plane
 
 # Wheel-mode toggle behind the wheel
-MODE_BTN_Y = 17.0
+MODE_BTN_Y = 15.5
 MODE_BTN = (6.0, 9.0)      # x, y footprint
 
 # DPI up/down on the centre line behind the wheel-mode toggle
-DPI_Y = [5.0, -5.0]
+DPI_Y = [4.5, -6.0]
 DPI_BTN = (7.0, 7.5)       # x, y footprint
 
 # Side buttons: two per flank (mirrored), forward + back
@@ -158,11 +184,11 @@ WEIGHT_SLUG_DENSITY = 2.70  # aluminium, ~ matches a NiMH AA's mass
 
 # Receiver garage (generic 2.4 GHz nano receiver)
 RECEIVER = (15.0, 19.0, 6.0)
-RECEIVER_XY = (17.5, -37.5)  # garage pocket, opens on the underside
+RECEIVER_XY = (16.5, -37.0)  # garage pocket, opens on the underside
 
 # USB-C receptacle (mid-mount) and plug overmold clearance
 USBC = (8.94, 7.35, 3.26)
-USBC_PLUG = (12.5, 7.0)    # opening for the plug overmold (x, z)
+USBC_PLUG = (12.5, 6.6)    # opening for the plug overmold (x, z)
 
 # Base switches (on main PCB underside): power slide + connection mode button
 POWER_SW_XY = (11.0, 50.0)
@@ -184,4 +210,4 @@ SKATE_FRONT_XY = (15.0, 50.0)
 # Materials (g/cm^3) for the mass / centre-of-gravity estimate
 DENSITY = {"shell": 1.20 if MOLDED else 1.26,   # PC/ABS | PLA
            "pcb": 1.85, "switch": 1.6, "nimh_aa": 2.86,  # 27 g / 9.4 cm3
-           "steel": 7.85, "ptfe": 2.2, "rubber": 1.2, "aluminium": 2.70}
+           "steel": 7.85, "zinc": 6.6, "ptfe": 2.2, "rubber": 1.2, "aluminium": 2.70}

@@ -99,7 +99,19 @@ def _face_triangles(shape: bd.Shape, tol: float, ang: float):
     from OCP.TopAbs import TopAbs_REVERSED
     from OCP.TopLoc import TopLoc_Location
 
-    BRepMesh_IncrementalMesh(shape.wrapped, tol, False, ang, True)
+    from OCP.BRepTools import BRepTools
+
+    # OCCT's mesher occasionally gives up on a heavily trimmed B-spline face.
+    # If any face comes back without triangles, clear and re-mesh the WHOLE
+    # shape a little coarser (re-meshing one face alone leaves seams that
+    # don't match its neighbours), instead of silently dropping the face.
+    for k in (1.0, 1.5, 2.5, 4.0):
+        if k > 1.0:
+            BRepTools.Clean_s(shape.wrapped)
+        BRepMesh_IncrementalMesh(shape.wrapped, tol * k, False, min(ang * k, 0.6), True)
+        if all(BRep_Tool.Triangulation_s(f.wrapped, TopLoc_Location()) is not None
+               for f in shape.faces()):
+            break
     for i, face in enumerate(shape.faces()):
         loc = TopLoc_Location()
         tri = BRep_Tool.Triangulation_s(face.wrapped, loc)

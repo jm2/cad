@@ -75,6 +75,14 @@ def channel_roof_z(x) -> float:
     return min(TEAR_CAP_OUT, max(circ, L.BAT_AXIS_Z + r * m.sqrt(2) - abs(x)))
 
 
+def battery_bore() -> bd.Part:
+    """The space the battery (and its contacts) occupies inside the channel."""
+    y0, y1 = P.BAT_Y
+    if P.FDM:
+        return _teardrop_y(P.BAT_X, y0, L.BAT_AXIS_Z, L.BAT_R_IN, y1 - y0, TEAR_CAP_IN)
+    return L.cyl_y(P.BAT_X, y0, L.BAT_AXIS_Z, 2 * L.BAT_R_IN, y1 - y0)
+
+
 def battery_channel() -> bd.Part:
     y0, y1 = P.BAT_Y
     t = P.BAT_WALL
@@ -158,6 +166,111 @@ def nose_tabs():
     return out
 
 
+def rest_pockets():
+    """Moulded only: pockets cored from below under each rest (the flare is
+    otherwise a thick solid). Each pocket lies outside the cavity wall + WALL
+    and inside the skin at WALL; RIB_T-wide strips every RIB_PITCH stay
+    uncut and tie the floor to the skirt."""
+    import numpy as np
+    W = P.WALL
+    zl = P.Z_LIP
+    x_in = lambda y: form.bell_cavity_x(y, P.Z_SPLIT) + W
+    ys = [y for y in np.linspace(P.Y_TAIL + 8, P.Y_NOSE - 8, 160)
+          if form.rest_pocket_x(y, P.Z_BASE) - 0.3 - x_in(y) > 2.5]
+    if len(ys) < 3:
+        return []
+    runs, cur = [], [ys[0]]
+    for a, b in zip(ys[:-1], ys[1:]):
+        if b - a > 2.0:
+            runs.append(cur)
+            cur = []
+        cur.append(b)
+    runs.append(cur)
+    cuts = []
+    # vertical-walled pockets: outer wall straight up from the underside
+    # opening's edge (the material between pocket and skin thickens toward
+    # the lip). A pocket following the skin offset made OCCT booleans fail.
+    x_out = lambda y: form.rest_pocket_x(y, P.Z_BASE) - 0.3
+    for run in runs:
+        if len(run) < 3:
+            continue
+        yr = np.linspace(run[0], run[-1], 24)
+        for sgn in (-1, 1):
+            inner = [bd.Vector(sgn * x_in(y), y, 0) for y in yr]
+            outer = [bd.Vector(sgn * x_out(y), y, 0) for y in reversed(yr)]
+            pocket = bd.extrude(bd.Face(bd.Wire.make_polygon(inner + outer, close=True)).moved(
+                bd.Location((0, 0, -1.0))), amount=P.POCKET_TOP + 1.0, dir=(0, 0, 1))
+            for yk in np.arange(run[0] + P.RIB_PITCH / 2, run[-1], P.RIB_PITCH):
+                pocket = pocket - zbox(-60, 60, yk - P.RIB_T / 2, yk + P.RIB_T / 2, -5, P.Z_SPLIT)
+            cuts.append(pocket)
+    return cuts
+
+
+def nose_tabs():
+    """Locating tabs rising from the base rim into the top shell at the nose
+    (all screws are behind the buttons). On the base, so the top shell's rim
+    prints flat on the bed in the FDM variant."""
+    _, y = P.NOSE_TAB_XY
+    tx, ty, h = P.NOSE_TAB
+    xt = form.half_width(form.top_cavity(), y, P.Z_SPLIT + h) - 0.2
+    out = []
+    for sgn in (-1, 1):
+        lo = zbox(xt - tx, xt + 3.0, y - ty / 2, y + ty / 2, P.Z_SPLIT - 2.5, P.Z_SPLIT) & form.base_outer()
+        hi = zbox(xt - tx, xt, y - ty / 2, y + ty / 2, P.Z_SPLIT - 0.01, P.Z_SPLIT + h)
+        t = lo + hi
+        out.append(t.mirror(bd.Plane.YZ) if sgn < 0 else t)
+    return out
+
+
+def rest_vents():
+    """(vent cutters, ribs) for the moulded base: the band of floor that lies
+    under each rest's hollow is opened (so the lower tool half can form the
+    hollow from below) and bridged by ribs tying the floor to the skirt."""
+    import numpy as np
+    zin = P.Z_SPLIT - 2.0
+    zfl = FT + 0.3
+    ys = [y for y in np.linspace(P.Y_TAIL + 8, P.Y_NOSE - 8, 120)
+          if form.bell_cavity_x(y, zfl) - form.bell_cavity_x(y, zin) > 2.9]
+    if len(ys) < 3:
+        return [], []
+    cav = form.base_cavity()
+    vents, ribs = [], []
+    # contiguous runs of y (one per side of the grip, normally one run)
+    runs, cur = [], [ys[0]]
+    for a, b in zip(ys[:-1], ys[1:]):
+        if b - a > 2.0:
+            runs.append(cur)
+            cur = []
+        cur.append(b)
+    runs.append(cur)
+    for run in runs:
+        if len(run) < 3:
+            continue
+        yr = np.linspace(run[0], run[-1], 24)
+        for sgn in (-1, 1):
+            inner = [bd.Vector(sgn * form.bell_cavity_x(y, zin), y, 0) for y in yr]
+            outer = [bd.Vector(sgn * (form.bell_cavity_x(y, zfl) - 0.3), y, 0) for y in reversed(yr)]
+            f = bd.Face(bd.Wire.make_polygon(inner + outer, close=True))
+            band = bd.extrude(f.moved(bd.Location((0, 0, -1.0))), amount=FT + 1.01, dir=(0, 0, 1))
+            vents.append(band)
+            # ribs reach 1 mm past the vent on both sides so they run into the
+            # skirt wall and the floor (not edge-to-edge: that left 0.01 mm
+            # sliver faces the mesher can't close)
+            inner_r = [bd.Vector(sgn * (form.bell_cavity_x(y, zin) - 1.0), y, 0) for y in yr]
+            outer_r = [bd.Vector(sgn * (form.bell_cavity_x(y, zfl) + 1.0), y, 0) for y in reversed(yr)]
+            fr = bd.Face(bd.Wire.make_polygon(inner_r + outer_r, close=True))
+            tall = bd.extrude(fr.moved(bd.Location((0, 0, P.Z_BASE))), amount=P.Z_SPLIT, dir=(0, 0, 1))
+            for yk in np.arange(run[0] + P.RIB_PITCH / 2, run[-1], P.RIB_PITCH):
+                slab = zbox(-60, 60, yk - P.RIB_T / 2, yk + P.RIB_T / 2, P.Z_BASE - 1, P.Z_SPLIT)
+                # clip to the OUTER body: the rib overlaps the wall/floor
+                # solidly (clipping to the cavity made faces coincide with the
+                # cavity surface, which the union then mangled)
+                r = form.base_outer() & tall & slab
+                if r is not None and r.solids():
+                    ribs.append(r)
+    return vents, ribs
+
+
 @lru_cache(maxsize=1)
 def build_base() -> dict[str, bd.Solid]:
     b = form.base_shell_raw()
@@ -173,8 +286,15 @@ def build_base() -> dict[str, bd.Solid]:
     for s in standoffs():
         add += s
     b = b + (add & clip)
+    if __import__("os").environ.get("BASE_DEBUG"):
+        print("after adds valid", b.is_valid)
     for t in nose_tabs():
         b = b + t
+    if P.MOLDED:
+        for pk in rest_pockets():
+            b = b - pk
+    # nothing added (garage walls, posts) may intrude into the battery bore
+    b = b - battery_bore()
     # openings
     ax0, ax1, ay0, ay1 = door_aperture()
     cuts.append(zbox(ax0, ax1, ay0, ay1, -1, FT + 0.01))
@@ -190,10 +310,12 @@ def build_base() -> dict[str, bd.Solid]:
     cuts.append(zbox(px - 2.6, px + 2.6, py - 1.2, py + 1.2, -1, FT + 1))
     cx, cy = P.CONN_BTN_XY
     cuts.append(L.cyl_z(cx, cy, -1, 4.2, FT + 2))
+    # USB-C plug opening: a notch open to the underside. Any lower edge
+    # landing on the nose's rounded lip/tuck made the boolean fail; a notch
+    # crosses every surface cleanly (reads as a cable channel from below)
     w, h = P.USBC_PLUG
     zc = P.PCB_Z + P.PCB_T / 2
-    usb = bd.Pos(0, L.USBC_FRONT - 0.5, zc) * bd.Rot(-90, 0, 0) * bd.extrude(
-        bd.Sketch() + bd.RectangleRounded(w, h, h / 2 - 0.01), amount=20)
+    usb = zbox(-w / 2, w / 2, L.USBC_FRONT - 0.5, P.Y_NOSE + 10, -1.0, zc + h / 2)
     cuts.append(usb)
     for (cx_, cy_, lx, ly) in skate_spots():
         cuts.append(oval(cx_, cy_, lx + 0.2, ly + 0.2, P.Z_BASE - 1, 1 + P.SKATE_RECESS))
@@ -204,9 +326,21 @@ def build_base() -> dict[str, bd.Solid]:
     for lx in LATCH_X:
         cuts.append(zbox(P.BAT_X + lx - 1.25 - P.FIT, P.BAT_X + lx + 1.25 + P.FIT,
                          ay1 - 0.1, ay1 + 1.1, FT - 0.01, FT + 1.4))
-    for c in cuts:
+    import os
+    dbg = os.environ.get("BASE_DEBUG")
+    if dbg:
+        print("before cuts valid", b.is_valid)
+    for i, c in enumerate(cuts):
         b = b - c
-    base = b.solids()[0] if len(b.solids()) == 1 else max(b.solids(), key=lambda s: s.volume)
+        if dbg and not b.is_valid:
+            print("cut", i, "made base invalid; cut bbox", c.bounding_box().min, c.bounding_box().max)
+            dbg = None
+    from tools.model_io import volume as _vol
+    sols = b.solids()
+    base = max(sols, key=_vol)
+    if len(sols) > 1 or _vol(base) < 0.8 * _vol(form.base_shell_raw()):
+        raise RuntimeError(f"base broke into {len(sols)} pieces / lost volume "
+                           f"({_vol(base):.0f} vs raw {_vol(form.base_shell_raw()):.0f} mm^3)")
 
     # battery door: the floor slab inside the aperture, inset by GAP
     g = P.GAP

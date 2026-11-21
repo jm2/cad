@@ -52,9 +52,14 @@ def _cos_stations(a, b, n=CONTOUR_N):
 
 
 def form_at(y: float) -> dict:
+    return dict(_form_at(round(float(y), 6)))
+
+
+@lru_cache(maxsize=200000)
+def _form_at(y: float):
     d = {k: float(f(y)) for k, f in _INTERP.items()}
     d.setdefault("flare", 0.0)
-    return d
+    return tuple(d.items())
 
 
 def shelf(dz: float) -> float:
@@ -240,8 +245,23 @@ def plan_wire(z: float, d_side, d_end) -> bd.Wire:
 # height): everything above the lip releases up, everything below releases
 # down.
 
+LIP_ROUND = 0.8   # mm half-window of the smoothing that rounds the lip
+
+
 def bell_offset(y, z, skirt=None) -> float:
-    """Outward offset of the base's half-width from w(y) at height z."""
+    """Outward offset of the base's half-width from w(y) at height z: the
+    piecewise profile averaged over +-LIP_ROUND in z, which rounds its
+    corners (lip, band foot). A sharp lip made the smooth loft ring around
+    it and the mesher produced ~900k triangles per face."""
+    n = 9
+    acc = 0.0
+    for k in range(n):
+        zz = z + LIP_ROUND * (2 * k / (n - 1) - 1)
+        acc += _bell_offset_raw(y, min(max(zz, P.Z_BASE), P.Z_SPLIT + 2), skirt)
+    return acc / n
+
+
+def _bell_offset_raw(y, z, skirt=None) -> float:
     f = form_at(y)
     zs, zl, zb = P.Z_SPLIT, P.Z_LIP, P.Z_BASE
     t = math.tan(math.radians(P.DRAFT))
@@ -254,10 +274,10 @@ def bell_offset(y, z, skirt=None) -> float:
     # rounded tuck (LIP_TUCK mm) down to the underside: the foot runs out
     # almost to the desk, like a bell curve's tail
     band = getattr(P, "LIP_BAND", 0.0)
-    if z >= zl - band:
-        return x_lip
+    if z >= zl - band:            # upright band, drafted to release downward
+        return x_lip - (zl - z) * t
     u = min((zl - band - z) / (zl - band - zb), 1.0)
-    return x_lip - P.LIP_TUCK * (1 - (1 - u) ** P.TUCK_P)
+    return x_lip - band * t - P.LIP_TUCK * (1 - (1 - u) ** P.TUCK_P)
 
 
 def _skirt_end():
@@ -272,23 +292,70 @@ def bell_x(y, z, extra_d=0.0) -> float:
 
 
 def bell_cavity_x(y, z, n=13) -> float:
-    """Exact inner offset (erosion) of the outer section profile by WALL:
-    min over s in [z-W, z+W] of x(s) - sqrt(W^2 - (s-z)^2); the ends are
-    pulled in by WALL too."""
+    """Smoothed (z-averaged, see LIP_ROUND) cavity half-width: the floor-width
+    cap and the erosion leave kinks that make the loft ring otherwise."""
+    m = 7
+    return sum(_bell_cavity_x(y, z + LIP_ROUND * (2 * k / (m - 1) - 1), n) for k in range(m)) / m
+
+
+def _bell_cavity_x(y, z, n=13) -> float:
+    """Base cavity half-width: STRAIGHT walls at the parting-line outline.
+    Below the parting line the bell foot leans the base's outer wall inward
+    as it rises; a cavity following it would curl in at the rim and the core
+    (pulled up out of the base) could not release. Moulded: the thick flare
+    under each rest is cored from below instead (rest_pocket_x); FDM: it is
+    left solid."""
+    return bell_cavity_x_raw(y, P.Z_SPLIT + 1.0, n)
+
+
+def rest_pocket_x(y, z, n=13) -> float:
+    """Outline of the core-from-below pocket under the rests (moulded): the
+    outer skin eroded by WALL, never wider than at the underside opening (so
+    the whole pocket shows from below), z-smoothed like the rest."""
+    m = 7
+    acc = 0.0
+    for k in range(m):
+        zz = z + LIP_ROUND * (2 * k / (m - 1) - 1)
+        acc += min(bell_cavity_x_raw(y, max(zz, P.Z_BASE), n), bell_cavity_x_raw(y, P.Z_BASE, n))
+    return acc / m
+
+
+@lru_cache(maxsize=1)
+def rest_pocket_body() -> bd.Solid:
+    """Loft of rest_pocket_x from below the underside up to under the flare
+    (whole perimeter; base.py keeps only the bands under the rests)."""
+    top = P.Z_SPLIT - 2.5
+    levels = sorted(set([P.Z_BASE - 1.0] + list(np.linspace(P.Z_BASE, top, 16))))
+    wires = []
+    for z in levels:
+        zz = max(z, P.Z_BASE)
+        d_tip = -bell_offset(P.Y_TAIL, zz, skirt=_skirt_end()) + P.WALL
+        wires.append(bell_wire(z, lambda y, _z, zz=zz: rest_pocket_x(y, zz), d_tip))
+    return bd.Solid.make_loft(wires, ruled=False)
+
+
+def bell_cavity_x_raw(y, z, n=13) -> float:
+    """Inner offset (erosion) of the UNSCALED section profile by WALL:
+    min over s in [z-W, z+W] of x(s) - sqrt(W^2 - (s-z)^2), then the
+    end-zone ellipse (shortened by WALL) is applied. Eroding after scaling
+    left a cusp where the two sides met at the tips, and the contour spline
+    looped through it."""
     W = P.WALL
+    w = form_at(y)["w"]
     best = 1e9
     for k in range(n):
         ds = -W + 2 * W * k / (n - 1)
         sz = max(z + ds, P.Z_BASE)
-        best = min(best, bell_x(y, sz, extra_d=W) - math.sqrt(max(W * W - ds * ds, 0.0)))
-    return best
+        best = min(best, w + bell_offset(y, sz) - math.sqrt(max(W * W - ds * ds, 0.0)))
+    d_end = -bell_offset(P.Y_TAIL, z, skirt=_skirt_end()) + W
+    return best * end_scale(y, d_end)
 
 
 def bell_wire(z, xfun, d_tip) -> bd.Wire:
     yt, yn = P.Y_TAIL + d_tip, P.Y_NOSE - d_tip
     # trim to where the contour really has width (an eroded cavity contour
     # goes negative near the tips; clamping there made zero-width slivers)
-    ys = np.linspace(yt, yn, 801)
+    ys = np.linspace(yt, yn, 241)
     ok = np.array([xfun(y, z) > 0.3 for y in ys])
     i0, i1 = int(np.argmax(ok)), len(ok) - 1 - int(np.argmax(ok[::-1]))
     yt, yn = ys[max(i0 - 1, 0)], ys[min(i1 + 1, len(ys) - 1)]
@@ -301,7 +368,12 @@ def bell_wire(z, xfun, d_tip) -> bd.Wire:
 def _bell_base_body(cavity: bool) -> bd.Solid:
     zs, zl, zb = P.Z_SPLIT, P.Z_LIP, P.Z_BASE
     z0 = zb + (P.FLOOR if cavity else 0.0)
-    below = list(np.linspace(z0, zl, 9)) + [zl - getattr(P, "LIP_BAND", 0.0)]
+    band = getattr(P, "LIP_BAND", 0.0)
+    # contours at the band's foot and at the lip (the profile's corners) so
+    # the loft doesn't round them into a bulge; keep them >= 0.35 mm apart -
+    # near-duplicate sections make the smooth loft oscillate wildly
+    below = list(np.linspace(z0, zl - band - 0.4, 7)) + [zl - band, zl - 0.35, zl]
+    below = [v for v in below if v >= z0]
     above = list(zl + (zs - zl) * np.linspace(0, 1, 14) ** 1.6)
     levels = sorted(set(round(v, 5) for v in below + above))
     if cavity:
@@ -311,7 +383,8 @@ def _bell_base_body(cavity: bool) -> bd.Solid:
         if not cavity and abs(z - zs) < 1e-9:
             wires.append(contour_wire(zs))     # identical to the dome's base
             continue
-        d_tip = -bell_offset(P.Y_TAIL, z, skirt=_skirt_end()) + (P.WALL if cavity else 0.0)
+        zt = P.Z_SPLIT + 1.0 if cavity else z      # straight cavity walls
+        d_tip = -bell_offset(P.Y_TAIL, zt, skirt=_skirt_end()) + (P.WALL if cavity else 0.0)
         wires.append(bell_wire(z, bell_cavity_x if cavity else bell_x, d_tip))
     return bd.Solid.make_loft(wires, ruled=False)
 

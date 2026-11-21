@@ -19,12 +19,12 @@ TACT_G = 0.25
 
 def density(name: str) -> float:
     D = P.DENSITY
-    if name.startswith(("screw", "pin_", "axle")):
+    if name.startswith(("screw", "pin_", "axle", "wheel_dowel")):
         return D["steel"]
+    if name == "wheel":
+        return D["zinc"] if P.MOLDED else D["shell"]
     if name.startswith("skate"):
         return D["ptfe"]
-    if name == "wheel_tyre":
-        return D["rubber"]
     if name.startswith("pcb"):
         return D["pcb"]
     return D["shell"]

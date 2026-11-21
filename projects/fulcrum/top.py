@@ -88,13 +88,57 @@ def outer_x(y):
     return xn + (xr - xn) * t
 
 
+def spine_hw(y) -> float:
+    """Half-width of the centre spine at y: narrow at the tail, widening to
+    SPINE_HW[1] by y = +20 and constant forward of that."""
+    a, b = P.SPINE_HW
+    t = min(max((y - P.SPINE_Y[0]) / (20.0 - P.SPINE_Y[0]), 0.0), 1.0)
+    return a + (b - a) * t
+
+
+def spine_prism(extra=0.0, y0=None, y1=None, z0=None, h=60.0) -> bd.Part:
+    """Vertical prism over the spine's plan outline grown by `extra`, with a
+    rounded tail end and running out past the nose."""
+    import numpy as np
+    y0 = P.SPINE_Y[0] if y0 is None else y0
+    y1 = P.SPINE_Y[1] if y1 is None else y1
+    z0 = P.Z_SPLIT - 1.0 if z0 is None else z0
+    r0 = spine_hw(y0) + extra
+    ys = list(y0 - extra + (r0 + extra) * (1 - np.cos(np.linspace(0, math.pi / 2, 7)))) + \
+        list(np.linspace(y0 + r0, y1, 24))[1:]
+    right = []
+    for y in ys:
+        hw = spine_hw(y) + extra
+        dy = (y0 + r0) - y
+        if dy > 0:                       # rounded (elliptical) tail end
+            hw *= math.sqrt(max(0.0, 1 - (dy / (r0 + extra)) ** 2))
+        right.append(bd.Vector(max(hw, 0.0), y, 0))
+    left = [bd.Vector(-v.X, v.Y, 0) for v in reversed(right)]
+    pts = right + left[:-1] if right[0].X == 0 else right + left
+    w = bd.Wire.make_polygon(pts, close=True)
+    return bd.extrude(bd.Face(w).moved(bd.Location((0, 0, z0))), amount=h, dir=(0, 0, 1))
+
+
+def flange_band(sign) -> bd.Part:
+    """Plan band along one spine edge where its retaining flange runs (only
+    behind the main buttons, under fixed shell)."""
+    import numpy as np
+    y0, y1 = P.SPINE_FLANGE_Y
+    ys = np.linspace(y0, y1, 16)
+    inner = [bd.Vector(sign * (spine_hw(y) - 1.0), y, 0) for y in ys]
+    outer = [bd.Vector(sign * (spine_hw(y) + P.GAP / 2 + P.SPINE_FLANGE[0]), y, 0) for y in reversed(ys)]
+    w = bd.Wire.make_polygon(inner + outer, close=True)
+    return bd.extrude(bd.Face(w).moved(bd.Location((0, 0, P.Z_SPLIT))), amount=50, dir=(0, 0, 1))
+
+
 def button_region(sign) -> bd.Solid:
-    """Plan region of one main button (prism), between its slot centre lines."""
-    ws0, ws1 = wheel_slot_y()
-    xs = wheel_slot_half()
+    """Plan region of one main button (prism): from the spine gap to its
+    outer slot line, from the rear edge out over the nose."""
+    import numpy as np
     yN = P.Y_NOSE + 6
-    pts = [(0, yN), (0, ws1), (xs, ws1), (xs, ws0), (P.SPINE_HALF, ws0),
-           (P.SPINE_HALF, P.BTN_REAR_Y), (outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y), (outer_x(yN), yN)]
+    ys = np.linspace(P.BTN_REAR_Y, yN, 16)
+    inner = [(spine_hw(y) + P.GAP / 2, y) for y in ys]
+    pts = inner + [(outer_x(yN), yN), (outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y)]
     pts = [(sign * x, y) for x, y in pts]
     w = bd.Wire.make_polygon([bd.Vector(x, y, 0) for x, y in pts], close=True)
     f = bd.Face(w)
@@ -104,16 +148,13 @@ def button_region(sign) -> bd.Solid:
 
 
 def slot_lines(sign, rear=True):
-    ws0, ws1 = wheel_slot_y()
-    xs = wheel_slot_half()
+    """Slot centre lines of one main button (the spine gap bounds its inner
+    edge): the outer edge, plus the rear edge for separate (FDM) buttons."""
     yN = P.Y_NOSE + 6
-    lines = [
-        [(0, ws1), (0, yN)],                                          # centre
-        [(xs, ws0), (P.SPINE_HALF, ws0), (P.SPINE_HALF, P.BTN_REAR_Y)],  # spine
-        [(outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y), (outer_x(yN), yN)],  # outer
-    ]
+    xr = spine_hw(P.BTN_REAR_Y) + P.GAP / 2
+    lines = [[(outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y), (outer_x(yN), yN)]]
     if rear:
-        lines.append([(P.SPINE_HALF, P.BTN_REAR_Y), (outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y)])
+        lines.append([(xr - P.GAP / 2, P.BTN_REAR_Y), (outer_x(P.BTN_REAR_Y), P.BTN_REAR_Y)])
     return [[(sign * x, y) for x, y in ln] for ln in lines]
 
 
@@ -147,7 +188,9 @@ def small_top_button(cx, cy, lx, ly):
     # flange sits below the lowest roof point over its footprint
     xs = [cx - lx / 2 - fl, cx, cx + lx / 2 + fl]
     ys = [cy - ly / 2 - fl, cy, cy + ly / 2 + fl]
-    roof = min(ceiling(x, y) for x in xs for y in ys)
+    # the top buttons sit in the spine, whose underside is SPINE_RECESS
+    # below the shell's
+    roof = min(ceiling(x, y) for x in xs for y in ys) - P.SPINE_RECESS
     f_top = roof - 0.3
     f_bot = f_top - P.FLANGE_T
     pad = prism_z(cx, cy, lx, ly, r, f_bot, 60) & form.top_outer()
@@ -182,11 +225,11 @@ def hinge_geom(sign):
     fixed spine)."""
     yr = P.BTN_REAR_Y
     kx, _ = P.HINGE_KNUCKLE
-    xa = P.SPINE_HALF + P.GAP / 2 + P.FIT + kx / 2 + 0.05
+    xa = spine_hw(yr) + P.GAP / 2 + P.FIT + kx / 2 + 0.05
     xl = xa + kx + P.FIT + 0.05
     xb = xl + kx + P.FIT + 0.05
     ya = yr - 1.5
-    za = min(ceiling(sign * x, yr) for x in (xa, xb)) - 4.5
+    za = min(ceiling(sign * x, yr) for x in (xa, xb)) - 3.2
     return ya, za, [sign * xa, sign * xb], [sign * xl]
 
 
@@ -234,27 +277,51 @@ def post(x, y):
     return L.post_z(x, y, z0, P.POST_D, ceiling(x, y) + 1.0 - z0, free_end="bottom")
 
 
+def build_spine(shell_raw) -> bd.Solid:
+    """The spine: the shell's material inside the spine outline, dropped by
+    SPINE_RECESS, with the wheel slot, retaining flanges under the fixed
+    shell behind the buttons, and a pillar down to the main board at the
+    front."""
+    sp = shell_raw & spine_prism(0.0)
+    sp = bd.Pos(0, 0, -P.SPINE_RECESS) * sp.solids()[0]
+    ws0, ws1 = wheel_slot_y()
+    xs = wheel_slot_half()
+    sp = sp - zbox(-xs, xs, ws0, ws1, P.Z_SPLIT - 2, 50)
+    # underside relief over the wheel hub (detent ring, encoder magnet)
+    hub_r = max(8.5 / 2, P.ENC_MAGNET[0] / 2)
+    z_rel = L.wheel_axis_z() + hub_r + 0.6
+    sp = sp - zbox(-P.YOKE_ARM_X[1], P.YOKE_ARM_X[1], P.WHEEL_Y - 6, P.WHEEL_Y + 6, P.Z_SPLIT - 2, z_rel)
+    layer = (bd.Pos(0, 0, -0.2) * form.top_cavity()) - (bd.Pos(0, 0, -0.2 - P.SPINE_FLANGE[1]) * form.top_cavity())
+    for sign in (-1, 1):
+        sp = sp + (layer & flange_band(sign))
+    px, py = P.SPINE_PILLAR_XY
+    top = ceiling(px, py) - P.SPINE_RECESS + 0.3
+    sp = sp + L.cyl_z(px, py, L.PCB_TOP, 3.0, top - L.PCB_TOP)
+    return sp
+
+
 @lru_cache(maxsize=1)
 def build_top() -> dict[str, bd.Solid]:
-    shell = form.top_shell_raw()
+    raw = form.top_shell_raw()
+    shell = raw
     parts = {}
-    # screw bosses and nose tabs
+    # screw bosses
     for x, y in P.SCREW_XY:
         col, hole = top_boss(x, y)
         shell = shell + col - hole
-    # wheel opening
-    ws0, ws1 = wheel_slot_y()
-    xs = wheel_slot_half()
-    shell = shell - zbox(-xs, xs, ws0, ws1, P.Z_SPLIT - 1, 50)
-    # small buttons
+    # the spine is its own part: cut its outline (+ gap) out of the shell
+    spine = build_spine(raw)
+    shell = shell - spine_prism(P.GAP / 2)
+    # small buttons: top ones in the spine, side ones in the shell
     for name, (cx, cy, lx, ly, _) in SMALL_TOP.items():
         btn, cut = small_top_button(cx, cy, lx, ly)
-        shell = shell - cut
+        spine = spine - cut
         parts[name] = btn
     for name, (sign, cy, _) in small_side().items():
         btn, cut = small_side_button(sign, cy)
         shell = shell - cut
         parts[name] = btn
+    parts["spine"] = spine.solids()[0] if len(spine.solids()) == 1 else spine
     # main buttons
     for sign, name in ((-1, "btn_left"), (1, "btn_right")):
         for ln in slot_lines(sign, rear=P.FDM):
@@ -263,8 +330,9 @@ def build_top() -> dict[str, bd.Solid]:
         shell = shell - (button_region(sign) & zbox(-40, 40, -70, 80, P.Z_SPLIT - 1, P.Z_SPLIT + P.NOSE_GAP))
         sw = P.SW_L_XY if sign < 0 else P.SW_R_XY
         if P.MOLDED:
-            band = zbox(min(sign * P.SPINE_HALF, sign * outer_x(P.BTN_REAR_Y)),
-                        max(sign * P.SPINE_HALF, sign * outer_x(P.BTN_REAR_Y)),
+            x0 = spine_hw(P.BTN_REAR_Y) + P.GAP / 2
+            band = zbox(min(sign * x0, sign * outer_x(P.BTN_REAR_Y)),
+                        max(sign * x0, sign * outer_x(P.BTN_REAR_Y)),
                         P.BTN_REAR_Y - P.FLEX_BAND / 2, P.BTN_REAR_Y + P.FLEX_BAND / 2,
                         P.Z_SPLIT, 50)
             thin = bd.Pos(0, 0, P.WALL - P.FLEX_T) * form.top_cavity()
@@ -272,7 +340,6 @@ def build_top() -> dict[str, bd.Solid]:
             shell = shell + post(*sw)
     if P.FDM:
         pieces = shell.solids()
-        region = {s: button_region(s) for s in (-1, 1)}
         keep = []
         for pc in pieces:
             c = pc.center()

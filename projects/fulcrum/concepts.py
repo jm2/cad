@@ -66,7 +66,7 @@ def _wheel_and_slot():
     half_y = P.WHEEL_D / 2 + P.WHEEL_CLEAR
     xs = P.WHEEL_W / 2 + P.WHEEL_CLEAR
     slot = bd.Pos(0, P.WHEEL_Y, P.Z_SPLIT) * bd.Box(2 * xs, 2 * half_y, 40, align=MIN)
-    return wheel.tyre(), slot
+    return wheel.wheel(), slot
 
 
 def _ellipsoid(c, a, b, cz_axes):

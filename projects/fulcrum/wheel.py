@@ -1,4 +1,5 @@
-"""Scroll wheel module: rubber tyre, core with the magnetic encoder ring and
+"""Scroll wheel module: one-piece metal wheel (die-cast zinc; FDM: printed with
+steel dowel weights) with the magnetic encoder ring and
 the detent ring (ratchet mode), steel axle, and the cradle (yoke) that floats
 on the click switch and the two tilt switches.
 
@@ -21,37 +22,53 @@ def _ring_x(x0, x1, r_in, r_out, y, z):
     return L.cyl_x(x0, y, z, 2 * r_out, x1 - x0) - L.cyl_x(x0 - 1, y, z, 2 * r_in, x1 - x0 + 2)
 
 
-def tyre() -> bd.Solid:
+def wheel() -> bd.Solid:
+    """One-piece metal wheel (moulded variant: die-cast zinc, plated): rim
+    with machined axial ribs, web, hub boss out to the encoder magnet, and
+    the ratchet detent ring. Its mass (~18 g) is the flywheel that makes
+    free-spin coast. FDM variant: same part printed, with steel dowels
+    pressed into the six web holes for mass (see weights())."""
     y, z = P.WHEEL_Y, L.wheel_axis_z()
     w, R = P.WHEEL_W, P.WHEEL_D / 2
-    t = _ring_x(-w / 2, w / 2, R - 2.0, R, y, z)
-    groove = bd.Box(w + 2, 1.1, 1.2)
+    c = L.cyl_x(-w / 2, y, z, 2 * R, w)
+    rib = bd.Box(w + 2, P.WHEEL_RIB[0], 2 * P.WHEEL_RIB[1])
     for k in range(P.WHEEL_TREAD_N):
         a = 360.0 * k / P.WHEEL_TREAD_N
-        t -= bd.Pos(0, y, z) * bd.Rot(a, 0, 0) * bd.Pos(0, 0, R) * groove
-    return t.solids()[0]
-
-
-def core() -> bd.Solid:
-    y, z = P.WHEEL_Y, L.wheel_axis_z()
-    w, R = P.WHEEL_W, P.WHEEL_D / 2
-    c = L.cyl_x(-w / 2 + 0.4, y, z, 2 * (R - 2.0), w - 0.8)
-    # hub boss out to the encoder magnet (the magnet is its own part)
+        c -= bd.Pos(0, y, z) * bd.Rot(a, 0, 0) * bd.Pos(0, 0, R) * rib
+    # recessed web faces: rim and hub stay full width
+    for side in (-1, 1):
+        x0 = side * (w / 2 - P.WHEEL_WEB_RECESS) if side > 0 else -w / 2 - 0.01
+        c -= _ring_x(x0, x0 + P.WHEEL_WEB_RECESS + 0.01, 3.0, R - 2.0, y, z)
     od, idm, t = P.ENC_MAGNET
     c += L.cyl_x(w / 2 - 0.4, y, z, idm + 2.4, P.ENC_MAGNET_X - (w / 2 - 0.4) + t)
-    # detent ring (ratchet) on the left hub, small enough to clear the shell
     ring = L.cyl_x(-w / 2 - 1.2, y, z, 8.5, 1.6)
     notch = bd.Box(3, 0.9, 1.0)
     for k in range(P.WHEEL_DETENTS):
         a = 360.0 * (k + 0.5) / P.WHEEL_DETENTS
         ring -= bd.Pos(-w / 2 - 0.4, y, z) * bd.Rot(a, 0, 0) * bd.Pos(0, 0, 4.25) * notch
     c += ring
-    # lightening holes, axle bore
     for k in range(6):
         a = math.radians(60 * k)
-        c -= L.cyl_x(-w, y + 6.2 * math.cos(a), z + 6.2 * math.sin(a), 3.4, 2 * w)
+        c -= L.cyl_x(-w, y + 6.2 * math.cos(a), z + 6.2 * math.sin(a), _hole_d(), 2 * w)
     c -= L.cyl_x(-20, y, z, P.AXLE_D, 40)
     return c.solids()[0]
+
+
+def _hole_d():
+    return P.WHEEL_DOWEL[0] - 0.05 if P.FDM else 3.4   # FDM: press fit for dowels
+
+
+def weights() -> dict[str, bd.Solid]:
+    """FDM only: 3 x 6 mm steel dowels pressed into the wheel's web holes."""
+    if not P.FDM:
+        return {}
+    y, z = P.WHEEL_Y, L.wheel_axis_z()
+    d, l = P.WHEEL_DOWEL
+    out = {}
+    for k in range(6):
+        a = math.radians(60 * k)
+        out[f"wheel_dowel_{k + 1}"] = L.cyl_x(-l / 2, y + 6.2 * math.cos(a), z + 6.2 * math.sin(a), d, l)
+    return out
 
 
 def yoke_x():
@@ -93,5 +110,6 @@ def magnet() -> bd.Solid:
 
 @lru_cache(maxsize=1)
 def build_wheel() -> dict[str, bd.Solid]:
-    return {"wheel_tyre": tyre(), "wheel_core": core(), "enc_magnet": magnet(),
-            "axle": axle(), "yoke": yoke()}
+    parts = {"wheel": wheel(), "enc_magnet": magnet(), "axle": axle(), "yoke": yoke()}
+    parts.update(weights())
+    return parts

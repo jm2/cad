@@ -64,7 +64,7 @@ TOPB_W = 20.0
 
 # side boards (one per flank) for the side buttons
 SIDEB_Y = (-17.0, 16.0)
-SIDEB_Z = (P.SIDE_BTN_Z - 6.0, P.SIDE_BTN_Z + 6.0)
+SIDEB_Z = (P.SIDE_BTN_Z - 6.0, P.SIDE_BTN_Z + 4.5)   # top kept under the FDM hinge
 
 
 @lru_cache(maxsize=1)
