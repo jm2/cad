@@ -18,12 +18,13 @@ human review in FreeCAD. STEP is the only interchange with FreeCAD.
     check.py                 validity, watertight, bbox, volume/mass, wall thickness,
                              interference(), cylinders(), Dims asserts
     export.py                STEP + STL + 3MF into out/
-    slice.py                 PrusaSlicer CLI wrapper (time, filament, warnings)
+    slice.py                 slicer wrapper: Bambu Studio (default) or PrusaSlicer
+    bambu.py                 Bambu install + preset resolver (`python -m tools.bambu list`)
     roundtrip.py             compare STEP in build123d vs FreeCAD (freecadcmd)
     freecad_inspect.py       runs inside FreeCAD's Python only
     freecadcmd.sh            finds native or Flatpak freecadcmd
     new_project.sh           scaffold a project
-    profiles/                PrusaSlicer .ini files (generic_pla_0.4.ini = placeholder)
+    profiles/                PrusaSlicer .ini files (generic, legacy fallback only)
   projects/<name>/
     params.py                EVERY dimension, in mm
     model.py                 build() -> Part (or {name: Part}); `python model.py` = view
@@ -46,9 +47,9 @@ human review in FreeCAD. STEP is the only interchange with FreeCAD.
    wall thickness against `params.MIN_WALL`, mass at `params.DENSITY`).
    Add asserts to `test_model.py` for every feature that matters.
 5. **Export:** `make export` writes STEP/STL/3MF to `out/`.
-6. **Slice** (printed parts only): `make slice PROFILE=tools/profiles/<real>.ini`.
-   The generic profile is only a smoke test. Its time and filament numbers
-   don't describe the user's printer.
+6. **Slice** (printed parts only): `make slice` (Bambu Studio, X1C, 0.20mm
+   Standard, Bambu PLA Basic). Override with `PRINTER=H2D`,
+   `FILAMENT="Bambu PETG HF"`, `PROCESS="0.16mm Optimal"`.
 7. **Commit** once it builds, renders correctly and passes checks:
    `git add -A && git commit -m "<project>: <what changed>"`.
 
@@ -62,8 +63,8 @@ human review in FreeCAD. STEP is the only interchange with FreeCAD.
   `make check` passes). Never commit `out/`.
 - Do NOT install or import FreeCAD modules in the venv (different OCCT build).
   FreeCAD runs only through `tools/freecadcmd.sh` and `make roundtrip`.
-- Ask the user for real printer, material and nozzle details. Don't guess
-  slicer settings.
+- Target printer is a Bambu Lab X1 Carbon (0.4 nozzle); H2D only if a part
+  truly needs it. Use Bambu's system presets; don't invent slicer settings.
 - Temp/scratch files go under `${TMPDIR:-/var/tmp}`, never `/tmp`.
 
 ## Commands
@@ -74,7 +75,7 @@ make build render check          # the inner loop (also: `make all`)
 make render SECTION=y=0          # section plane: x=, y=, z=, or 'ox,oy,oz:nx,ny,nz'
 make render RENDER_ARGS=         # without rulers/bbox annotation
 make export                      # STEP/STL/3MF
-make slice PROFILE=../../tools/profiles/generic_pla_0.4.ini
+make slice                       # Bambu Studio, X1C; PRINTER=H2D FILAMENT=...
 make roundtrip                   # STEP volume/bbox in FreeCAD == build123d
 make view                        # push to OCP CAD Viewer in VS Code
 ```
@@ -100,6 +101,14 @@ through that symlink. To upgrade: download the new AppImage and its
 run `sha256sum -c`, `--appimage-extract`, then `ln -sfn <ver> current` and
 `make roundtrip`. Review a part with `freecad out/NAME.step`.
 
+## Slicer (Bambu Studio)
+
+Bambu Studio 02.09.01.70 (AGPL, official AppImage, digest-verified), extracted to
+`~/.local/opt/bambustudio/<version>/squashfs-root`; `current` symlink;
+wrapper `~/.local/bin/bambu-studio` (GUI). The CLI slices headless with
+DISPLAY unset. Upgrades go the same way as FreeCAD (new version dir, check the
+GitHub asset digest, extract, move `current`, re-slice the bracket).
+
 ## Headless rendering
 
 VTK uses EGL on the AMD RX 6400 (Mesa radeonsi); no X/Wayland display needed.
@@ -121,5 +130,10 @@ icon in the sidebar). It listens on port 3939. Then `make view` or run
 ## Known quirks
 
 - Wall-thickness is a ray-cast estimate. Assert on p1, not min.
-- `tools/profiles/generic_pla_0.4.ini` is not the user's printer.
+- Bambu Studio's CLI ignores `inherits` in presets; `tools.bambu.resolve`
+  flattens them first. Without that, density=0 (0 g) and process defaults are wrong.
+- Bambu Studio logs a glfw/Wayland error with no display (it's only the
+  thumbnail renderer); slicing is unaffected and slice.py filters it.
+- Bambu's G-code says "filament volume [cm^3]" but the number is mm³;
+  slice.py computes cm³ from length.
 - lib3mf emits DeprecationWarnings on Python 3.14; pytest filters them.

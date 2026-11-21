@@ -137,3 +137,76 @@ def edge_lines(shape: bd.Shape, tol=0.05):
     if not pts:
         return None
     return pv.PolyData(np.vstack(pts), lines=np.concatenate(lines))
+
+
+# ------------------------------------------------------------------ assemblies
+PALETTE = ["#8fa8c8", "#e0a458", "#7fb685", "#c97c8a", "#9d8ec7", "#6fb7b7",
+           "#d4c26a", "#b0b0b0", "#e07a5f", "#81b29a", "#f2cc8f", "#5e81ac"]
+
+
+class Assembly:
+    """Parts plus optional per-part metadata declared in model.py:
+
+        COLORS          {name: "#rrggbb"}
+        EXPLODE         {name: (dx, dy, dz)}   offset (mm) for exploded views
+        ALLOWED_CONTACT [("a", "b"), ...]       pairs allowed to touch/overlap
+                                                (press fits, screws in bosses)
+        MIN_CLEARANCE   {("a", "b"): mm}        pairs that must keep a gap
+        PRINT_ORIENT    {name: (rx, ry, rz)}    degrees, applied before FDM
+                                                export/slice/overhang checks
+        PULL            {name: (x, y, z)}       mould pull direction (molded)
+    """
+
+    def __init__(self, parts, module=None):
+        self.parts: dict[str, bd.Shape] = dict(parts)
+        self.module = module
+        g = lambda k, d: dict(getattr(module, k, None) or d) if module else d
+        self.colors = g("COLORS", {})
+        for i, (k, s) in enumerate(self.parts.items()):
+            if k not in self.colors:
+                c = getattr(s, "color", None)
+                self.colors[k] = (_hex(c) if c is not None
+                                  else PALETTE[i % len(PALETTE)])
+        self.explode = g("EXPLODE", {})
+        self.allowed_contact = {frozenset(p) for p in
+                                (getattr(module, "ALLOWED_CONTACT", None) or [])}
+        self.min_clearance = {frozenset(k): v for k, v in
+                              g("MIN_CLEARANCE", {}).items()}
+        self.print_orient = g("PRINT_ORIENT", {})
+        self.pull = g("PULL", {})
+
+    def __len__(self):
+        return len(self.parts)
+
+    def compound(self):
+        kids = []
+        for k, s in self.parts.items():
+            s.label = k
+            s.color = bd.Color(self.colors[k])
+            kids.append(s)
+        return bd.Compound(children=kids)
+
+
+def _hex(c) -> str:
+    r, g, b, *_ = tuple(c)
+    return "#%02x%02x%02x" % tuple(int(round(255 * x)) for x in (r, g, b))
+
+
+def load_assembly(src) -> Assembly:
+    """Like load_parts, but keeps model.py metadata, and splits a STEP whose
+    top-level compound has labelled children into named parts."""
+    if isinstance(src, Assembly):
+        return src
+    if isinstance(src, (str, os.PathLike)) and Path(src).suffix == ".py":
+        mod = load_module(src)
+        out = mod.build()
+        if not isinstance(out, dict):
+            out = {getattr(mod, "NAME", None) or Path(src).resolve().parent.name: out}
+        return Assembly(out, mod)
+    parts = load_parts(src)
+    if len(parts) == 1:
+        (k, s), = parts.items()
+        kids = list(getattr(s, "children", []) or [])
+        if len(kids) > 1 and all(getattr(c, "label", "") for c in kids):
+            return Assembly({c.label: c for c in kids})
+    return Assembly(parts)
