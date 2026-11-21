@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run FreeCAD's headless command-line interpreter, native or Flatpak.
+# Run FreeCAD's headless command-line interpreter: the AppImage wrapper in
+# ~/.local/bin (preferred), a native package, or the Flatpak as a fallback.
 # Env vars named FC_* are forwarded into the Flatpak sandbox.
 set -euo pipefail
 if command -v freecadcmd >/dev/null 2>&1; then exec freecadcmd "$@"; fi

@@ -89,6 +89,17 @@ Python API for tests: `Dims(part).expect(name, actual, nominal, tol)`,
 `min_distance(a, b)`, `cylinders(part)` (radius, `axis_pos`, `axis_dir`).
 Hole positions: use `axis_pos`, not `center` (the face centroid).
 
+## FreeCAD
+
+FreeCAD 1.1.4 (bundles OCCT 7.8.1; the venv's OCP is OCCT 8.0.1) comes from the
+official AppImage, extracted to `~/.local/opt/freecad/<version>/squashfs-root`.
+`~/.local/opt/freecad/current` points at the active version. Wrappers
+`~/.local/bin/freecadcmd` (headless) and `~/.local/bin/freecad` (GUI) go
+through that symlink. To upgrade: download the new AppImage and its
+`-SHA256.txt` from github.com/FreeCAD/FreeCAD/releases into a new version dir,
+run `sha256sum -c`, `--appimage-extract`, then `ln -sfn <ver> current` and
+`make roundtrip`. Review a part with `freecad out/NAME.step`.
+
 ## Headless rendering
 
 VTK uses EGL on the AMD RX 6400 (Mesa radeonsi); no X/Wayland display needed.
