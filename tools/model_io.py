@@ -24,9 +24,21 @@ import numpy as np
 
 PartLike = "bd.Shape | str | os.PathLike"
 
-# Default tessellation tolerances (mm / rad). Fine enough for renders & checks.
-LINEAR_TOL = 0.01
-ANGULAR_TOL = 0.1
+# Default tessellation tolerances (mm / rad). LINEAR_TOL=None means "scale
+# with part size" (diagonal / 5000, clamped to 0.005..0.1 mm): 0.03 mm for a
+# 150 mm part, fine for renders and checks, and ~25x faster than 0.01 mm on
+# freeform surfaces. OCCT caches a triangulation on the shape, so the first
+# call's tolerance wins for later calls on the same shape object.
+LINEAR_TOL = None
+ANGULAR_TOL = 0.2
+
+
+def default_tol(shape) -> float:
+    try:
+        diag = shape.bounding_box().diagonal
+    except Exception:
+        return 0.01
+    return float(min(0.1, max(0.005, diag / 5000.0)))
 
 
 def load_module(path: str | os.PathLike):
@@ -78,6 +90,7 @@ def load_part(src) -> bd.Shape:
 
 def mesh_arrays(shape: bd.Shape, tol=LINEAR_TOL, ang=ANGULAR_TOL):
     """Tessellate into (vertices Nx3 float, faces Mx3 int)."""
+    tol = default_tol(shape) if tol is None else tol
     verts, tris = shape.tessellate(tol, ang)
     v = np.array([(p.X, p.Y, p.Z) for p in verts], dtype=float)
     f = np.array(tris, dtype=np.int64).reshape(-1, 3)
@@ -99,6 +112,7 @@ def to_pyvista(shape: bd.Shape, tol=LINEAR_TOL, ang=ANGULAR_TOL):
     mapping triangles back to BRep faces (used for highlighting)."""
     import pyvista as pv
 
+    tol = default_tol(shape) if tol is None else tol
     all_v, all_f, ids = [], [], []
     off = 0
     for i, face in enumerate(shape.faces()):
