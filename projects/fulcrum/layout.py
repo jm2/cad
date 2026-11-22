@@ -178,6 +178,19 @@ def tact_stem_len() -> float:
 
 
 USBC_FRONT = 60.0
+USBC_Z = P.PCB_Z + P.PCB_T / 2      # receptacle / plug axis height
+
+
+def usb_plug() -> bd.Part:
+    """Oversized USB-C cable plug, fully inserted: overmold envelope + cable
+    running straight forward. Not a part of the mouse: test_model checks it
+    clears everything (the cable must plug in while the mouse is in use)."""
+    w, h, ln = P.USBC_PLUG
+    y0 = USBC_FRONT + 0.2               # overmold face seats on the receptacle
+    om = bd.Pos(0, y0 + ln / 2, USBC_Z) * bd.Box(w, ln, h)
+    om = om.fillet(min(h / 2 - 0.1, 2.5), om.edges().filter_by(bd.Axis.Y))
+    cable = cyl_y(0, y0 + ln - 1, USBC_Z, P.USBC_CABLE_D, 60)
+    return om + cable
 
 
 def usb_c() -> bd.Solid:

@@ -42,7 +42,9 @@ one parametric master:
   click and tilt switches. FDM: printed wheel with six steel dowel weights.
 - Wired (USB-C) and wireless: removable AA (NiMH, recharged over USB-C) under a
   hinged, latched door. Remove it for a lighter wired mouse, or fit an
-  AA-size weight slug. Receiver garage on the underside.
+  AA-size weight slug. Receiver garage on the underside. The cable plugs in
+  and stays in while you use the mouse: the nose opening takes a 14 x 8 mm
+  overmold (larger than USB-IF's recommended 12.35 x 6.5) with 0.5 mm all round.
 - Optical sensor at the PixArt-standard 2.4 mm lens height, 7 PTFE skates (four
   hide the screws), power switch and connect button on the underside.
 - Moulded base: the flare is cored from below by pockets with ribs (the
@@ -54,6 +56,7 @@ around them), the ratchet spring and the mode-toggle latch.
 
 **Verified in code** (`make test asm VARIANT=...`): every button post stops
 exactly the specified pre-travel above its switch; the wheel stands 5 mm proud;
+an oversized USB-C plug and cable, fully seated, touch nothing and stay off the desk;
 no part overlaps another except the declared contacts; moving parts keep their
 running clearances; shell walls; mass and centre of gravity; FreeCAD reads the
 STEP with the same volume and bounding box.

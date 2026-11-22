@@ -188,7 +188,12 @@ RECEIVER_XY = (16.5, -37.0)  # garage pocket, opens on the underside
 
 # USB-C receptacle (mid-mount) and plug overmold clearance
 USBC = (8.94, 7.35, 3.26)
-USBC_PLUG = (12.5, 6.6)    # opening for the plug overmold (x, z)
+# The cable must plug in while the mouse is in use (wired mode = charging).
+# Design for oversized aftermarket overmolds, not just the USB-IF 12.35x6.5
+# recommendation: envelope (x, z, length) + a strain relief / cable diameter.
+USBC_PLUG = (14.0, 8.0, 22.0)
+USBC_CABLE_D = 4.5
+USBC_PLUG_CLEAR = 0.5      # around the envelope, both variants
 
 # Base switches (on main PCB underside): power slide + connection mode button
 POWER_SW_XY = (11.0, 50.0)

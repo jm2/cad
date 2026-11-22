@@ -313,8 +313,9 @@ def build_base() -> dict[str, bd.Solid]:
     # USB-C plug opening: a notch open to the underside. Any lower edge
     # landing on the nose's rounded lip/tuck made the boolean fail; a notch
     # crosses every surface cleanly (reads as a cable channel from below)
-    w, h = P.USBC_PLUG
-    zc = P.PCB_Z + P.PCB_T / 2
+    w, h, _ = P.USBC_PLUG
+    w, h = w + 2 * P.USBC_PLUG_CLEAR, h + 2 * P.USBC_PLUG_CLEAR
+    zc = L.USBC_Z
     usb = zbox(-w / 2, w / 2, L.USBC_FRONT - 0.5, P.Y_NOSE + 10, -1.0, zc + h / 2)
     cuts.append(usb)
     for (cx_, cy_, lx, ly) in skate_spots():

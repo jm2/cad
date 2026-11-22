@@ -9,7 +9,7 @@ import form
 import layout as L
 import mass
 import params as P
-from tools.check import Dims, report
+from tools.check import Dims, interference, min_distance, report
 from tools.model_io import load_module
 
 model = load_module(Path(__file__).with_name("model.py"))
@@ -62,6 +62,23 @@ def test_switch_pretravel(parts):
                                              (0, y, P.SIDE_BTN_Z), (sign, 0, 0))]
             d.expect(f"btn_side_{side}{i + 1} post -> stem", min(abs(h) for h in hits) - stem_x,
                      P.SW_PRETRAVEL, tol=0.02)
+    print(d.summary())
+    d.verify()
+
+
+def test_usb_plug_in_use(parts):
+    """Wired mode must work with the mouse in use: an oversized USB-C plug,
+    fully seated, clears every part and stays off the desk."""
+    plug = L.usb_plug()
+    d = Dims()
+    d.expect_ge("plug lowest point above desk", plug.bounding_box().min.Z, 2.0)
+    for name, shape in parts.items():
+        if name == "usb_c" or shape.bounding_box().max.Y < L.USBC_FRONT - 2:
+            continue
+        d.expect("plug overlap with " + name, interference(plug, shape), 0.0, tol=1e-6)
+        if name == "base":
+            d.expect_ge("plug clearance to base", min_distance(plug, shape),
+                        P.USBC_PLUG_CLEAR - 0.05)
     print(d.summary())
     d.verify()
 
