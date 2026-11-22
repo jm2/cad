@@ -5,3 +5,4 @@ __pycache__/
 projects/*/out/
 *.gcode
 *.bgcode
+result.json
